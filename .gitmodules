@@ -1,0 +1,3 @@
+[submodule "server/vendor/excalidraw-mcp"]
+	path = server/vendor/excalidraw-mcp
+	url = https://github.com/excalidraw/excalidraw-mcp.git
