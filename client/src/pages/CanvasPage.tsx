@@ -1,67 +1,150 @@
-import { Link, useParams } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Excalidraw } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
-import { HelpCircle, LayoutGrid } from 'lucide-react'
+import { HelpCircle } from 'lucide-react'
 import { ChatPanel } from '@/components/ChatPanel'
-import { Button } from '@/components/ui/button'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useDrawingApp } from '@/hooks/useDrawingApp'
+import { useAuth } from '@/contexts/AuthContext'
+import { hasLocalStorageDraft, useDrawingApp } from '@/hooks/useDrawingApp'
 import { sanitizeAppState, sanitizeScene } from '@/lib/scene'
 
+const MIGRATION_HANDLED_KEY = 'ai-drawing-migration-handled'
+
+function CanvasLoadingOverlay() {
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black">
+      <p className="text-sm text-white/70">
+        Loading drawing
+        <span className="loading-dots ml-0.5 inline-flex">
+          <span className="loading-dot">.</span>
+          <span className="loading-dot">.</span>
+          <span className="loading-dot">.</span>
+        </span>
+      </p>
+    </div>
+  )
+}
+
 export default function CanvasPage() {
+  const navigate = useNavigate()
   const { id } = useParams()
-  const drawingId = id
+  const drawingIdFromUrl = Array.isArray(id) ? id[0] : id
+  const { isAuthenticated } = useAuth()
+  const migrationCheckedRef = useRef(false)
 
   const {
     messages,
     sceneJson,
     isLoading,
     isCanvasLoading,
+    currentDrawingId,
+    currentTitle,
+    isSaving,
     sendMessage,
     clearAll,
+    saveDrawing,
+    shareDrawing,
+    loadDrawing,
+    resetFreshCanvas,
+    importLocalStorageDraft,
+    setCurrentTitle,
     setExcalidrawAPI,
     handleSceneChange,
-  } = useDrawingApp(drawingId)
+  } = useDrawingApp()
+
+  useEffect(() => {
+    if (drawingIdFromUrl) {
+      void loadDrawing(drawingIdFromUrl)
+    }
+  }, [drawingIdFromUrl, loadDrawing])
+
+  useEffect(() => {
+    if (drawingIdFromUrl || !isAuthenticated || migrationCheckedRef.current) return
+
+    migrationCheckedRef.current = true
+
+    const alreadyHandled = sessionStorage.getItem(MIGRATION_HANDLED_KEY) === 'true'
+    const hasDraft = hasLocalStorageDraft()
+
+    if (hasDraft && !alreadyHandled) {
+      const accept = window.confirm(
+        'You have an unsaved canvas — would you like to save it to your account?'
+      )
+      sessionStorage.setItem(MIGRATION_HANDLED_KEY, 'true')
+
+      if (accept) {
+        importLocalStorageDraft()
+        void (async () => {
+          const newId = await saveDrawing('Recovered Drawing')
+          if (newId) {
+            navigate(`/drawing/${newId}`, { replace: true })
+          }
+        })()
+        return
+      }
+
+      clearLocalStorageDraft()
+    }
+
+    resetFreshCanvas()
+  }, [
+    drawingIdFromUrl,
+    isAuthenticated,
+    importLocalStorageDraft,
+    saveDrawing,
+    resetFreshCanvas,
+    navigate,
+  ])
 
   const scene = sanitizeScene(sceneJson) as {
     elements?: unknown[]
     appState?: Record<string, unknown>
   }
 
-  if (isCanvasLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-white text-zinc-500">
-        Loading drawing…
-      </div>
-    )
+  const handleSave = async () => {
+    const newId = await saveDrawing()
+    if (newId && !drawingIdFromUrl) {
+      navigate(`/drawing/${newId}`, { replace: true })
+    }
   }
+
+  const handleTitleChange = async (title: string) => {
+    setCurrentTitle(title)
+    if (currentDrawingId) {
+      await saveDrawing(title)
+    }
+  }
+
+  const handleShare = async () => {
+    const result = await shareDrawing()
+    if (result && !drawingIdFromUrl) {
+      navigate(`/drawing/${result.drawingId}`, { replace: true })
+    }
+    return result?.url ?? null
+  }
+
+  const showLoadingOverlay = Boolean(drawingIdFromUrl && isCanvasLoading)
 
   return (
     <TooltipProvider>
       <div className="relative h-screen w-screen overflow-hidden bg-white">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              asChild
-              variant="outline"
-              size="icon-sm"
-              className="absolute left-3 top-3 z-40 border-black/10 bg-white/90 text-black/60 shadow-sm hover:bg-white hover:text-black"
-            >
-              <Link to="/dashboard" aria-label="Your drawings">
-                <LayoutGrid className="size-4" />
-              </Link>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Your drawings</TooltipContent>
-        </Tooltip>
+        {showLoadingOverlay && <CanvasLoadingOverlay />}
+
+        <Link
+          to="/dashboard"
+          className="absolute left-3 top-3 z-40 text-xs text-black/30 transition-colors hover:text-black/50"
+        >
+          ← Dashboard
+        </Link>
 
         <Excalidraw
-          key={drawingId ?? 'new'}
+          key={currentDrawingId ?? drawingIdFromUrl ?? 'new'}
           excalidrawAPI={(api) => setExcalidrawAPI(api)}
           initialData={{
             elements: (scene.elements ?? []) as never[],
@@ -86,13 +169,30 @@ export default function CanvasPage() {
           </TooltipContent>
         </Tooltip>
 
-        <ChatPanel
-          messages={messages}
-          isLoading={isLoading}
-          onSendMessage={sendMessage}
-          onClear={clearAll}
-        />
+        {!showLoadingOverlay && (
+          <ChatPanel
+            messages={messages}
+            isLoading={isLoading}
+            onSendMessage={sendMessage}
+            onClear={clearAll}
+            onSave={handleSave}
+            onShare={handleShare}
+            isSaving={isSaving}
+            currentTitle={currentTitle}
+            onTitleChange={handleTitleChange}
+            currentDrawingId={currentDrawingId}
+          />
+        )}
       </div>
     </TooltipProvider>
   )
+}
+
+function clearLocalStorageDraft() {
+  try {
+    localStorage.removeItem('ai-drawing-messages')
+    localStorage.removeItem('ai-drawing-scene')
+  } catch {
+    // ignore
+  }
 }

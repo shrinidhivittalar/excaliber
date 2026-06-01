@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, Trash2 } from 'lucide-react'
+import { ArrowUp, Check, Loader2, Save, Share2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import type { Message } from '@/lib/types'
@@ -20,6 +21,12 @@ interface ChatPanelProps {
   isLoading: boolean
   onSendMessage: (text: string) => void
   onClear: () => void
+  onSave: () => Promise<void>
+  onShare: () => Promise<string | null>
+  isSaving: boolean
+  currentTitle: string
+  onTitleChange: (title: string) => void
+  currentDrawingId: string | null
 }
 
 function LoadingBubble() {
@@ -75,15 +82,28 @@ export function ChatPanel({
   isLoading,
   onSendMessage,
   onClear,
+  onSave,
+  onShare,
+  isSaving,
+  currentTitle,
+  onTitleChange,
+  currentDrawingId,
 }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const [toast, setToast] = useState<string | null>(null)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(currentTitle)
+  const [saveSucceeded, setSaveSucceeded] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isOverLimit = input.length > MAX_CHARS
   const canSend = input.trim().length > 0 && !isLoading && !isOverLimit
+
+  useEffect(() => {
+    setTitleDraft(currentTitle)
+  }, [currentTitle])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -106,6 +126,12 @@ export function ChatPanel({
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     }
   }, [])
+
+  useEffect(() => {
+    if (!saveSucceeded) return
+    const timer = setTimeout(() => setSaveSucceeded(false), 2000)
+    return () => clearTimeout(timer)
+  }, [saveSucceeded])
 
   const showToast = (message: string) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
@@ -149,31 +175,120 @@ export function ChatPanel({
     }
   }
 
+  const handleSave = async () => {
+    try {
+      await onSave()
+      setSaveSucceeded(true)
+    } catch {
+      showToast('Failed to save drawing')
+    }
+  }
+
+  const handleShare = async () => {
+    try {
+      const url = await onShare()
+      if (!url) {
+        showToast('Could not create share link')
+        return
+      }
+      showToast('Share link copied!')
+    } catch {
+      showToast('Failed to copy share link')
+    }
+  }
+
+  const commitTitle = () => {
+    const trimmed = titleDraft.trim() || 'Untitled Drawing'
+    setTitleDraft(trimmed)
+    setIsEditingTitle(false)
+    if (trimmed !== currentTitle) {
+      onTitleChange(trimmed)
+    }
+  }
+
   return (
     <div
       className="chat-panel-enter fixed bottom-5 right-5 z-50 flex h-[560px] w-[380px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/85 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-md"
     >
       {toast && (
-        <div className="absolute left-3 right-3 top-14 z-10 rounded-lg border border-amber-500/30 bg-amber-500/15 px-3 py-2 text-xs text-amber-200">
+        <div className="absolute left-3 right-3 top-14 z-10 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-xs text-emerald-200">
           {toast}
         </div>
       )}
 
-      <header className="flex shrink-0 items-start justify-between border-b border-white/10 px-4 py-3">
-        <div>
+      <header className="flex shrink-0 items-start justify-between gap-2 border-b border-white/10 px-4 py-3">
+        <div className="min-w-0 flex-1">
           <h2 className="text-sm font-medium text-white">✦ AI Drawing Engine</h2>
-          <p className="text-xs text-white/40">Powered by Groq + Excalidraw</p>
+          {isEditingTitle ? (
+            <Input
+              autoFocus
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={commitTitle}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitTitle()
+                if (e.key === 'Escape') {
+                  setTitleDraft(currentTitle)
+                  setIsEditingTitle(false)
+                }
+              }}
+              className="mt-1 h-7 border-white/10 bg-white/5 text-xs text-white"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsEditingTitle(true)}
+              className="mt-0.5 block max-w-full truncate text-left text-xs text-white/50 hover:text-white/70"
+              title="Click to edit title"
+            >
+              {currentTitle}
+            </button>
+          )}
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          onClick={handleClear}
-          className="text-white/50 hover:bg-white/10 hover:text-white"
-          aria-label="Clear chat and canvas"
-        >
-          <Trash2 className="size-3.5" />
-        </Button>
+
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            onClick={handleSave}
+            disabled={isSaving}
+            className="text-white/50 hover:bg-white/10 hover:text-white"
+            aria-label="Save drawing"
+          >
+            {isSaving ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : saveSucceeded ? (
+              <Check className="size-3.5 text-emerald-400" />
+            ) : (
+              <Save className="size-3.5" />
+            )}
+          </Button>
+
+          {currentDrawingId && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={handleShare}
+              className="text-white/50 hover:bg-white/10 hover:text-white"
+              aria-label="Share drawing"
+            >
+              <Share2 className="size-3.5" />
+            </Button>
+          )}
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            onClick={handleClear}
+            className="text-white/50 hover:bg-white/10 hover:text-white"
+            aria-label="Clear chat and canvas"
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
       </header>
 
       <ScrollArea className="chat-scroll-area min-h-0 flex-1">
