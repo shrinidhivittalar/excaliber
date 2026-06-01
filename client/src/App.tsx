@@ -1,68 +1,63 @@
-import { Excalidraw } from '@excalidraw/excalidraw'
-import '@excalidraw/excalidraw/index.css'
-import { HelpCircle } from 'lucide-react'
-import { ChatPanel } from '@/components/ChatPanel'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { useDrawingApp } from '@/hooks/useDrawingApp'
-import { sanitizeAppState, sanitizeScene } from '@/lib/scene'
+import type { ReactNode } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { useAuth } from '@/contexts/AuthContext'
+import AuthPage from '@/pages/AuthPage'
+import CanvasPage from '@/pages/CanvasPage'
+import DashboardPage from '@/pages/DashboardPage'
+
+function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { isAuthenticated } = useAuth()
+  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />
+}
 
 function App() {
-  const {
-    messages,
-    sceneJson,
-    isLoading,
-    sendMessage,
-    clearAll,
-    setExcalidrawAPI,
-    handleSceneChange,
-  } = useDrawingApp()
+  const { isAuthenticated, isLoading } = useAuth()
 
-  const scene = sanitizeScene(sceneJson) as {
-    elements?: unknown[]
-    appState?: Record<string, unknown>
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-black text-zinc-400">
+        Loading…
+      </div>
+    )
   }
 
   return (
-    <TooltipProvider>
-      <div className="relative h-screen w-screen overflow-hidden bg-white">
-        <Excalidraw
-          excalidrawAPI={(api) => setExcalidrawAPI(api)}
-          initialData={{
-            elements: (scene.elements ?? []) as never[],
-            appState: sanitizeAppState(scene.appState),
-          }}
-          onChange={(elements, appState) => handleSceneChange(elements, appState)}
-          UIOptions={{ canvasActions: { export: {} } }}
-        />
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              className="absolute left-[calc(50%+180px)] top-3 z-40 flex size-6 items-center justify-center rounded-full border border-black/10 bg-white/90 text-black/50 shadow-sm transition-colors hover:bg-white hover:text-black/70"
-              aria-label="Canvas editing help"
-            >
-              <HelpCircle className="size-3.5" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="max-w-[220px] text-center">
-            You can also manually edit the canvas — changes are saved automatically
-          </TooltipContent>
-        </Tooltip>
-
-        <ChatPanel
-          messages={messages}
-          isLoading={isLoading}
-          onSendMessage={sendMessage}
-          onClear={clearAll}
-        />
-      </div>
-    </TooltipProvider>
+    <Routes>
+      <Route
+        path="/login"
+        element={
+          isAuthenticated ? <Navigate to="/dashboard" replace /> : <AuthPage />
+        }
+      />
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/drawing/:id"
+        element={
+          <ProtectedRoute>
+            <CanvasPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <CanvasPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="*"
+        element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />}
+      />
+    </Routes>
   )
 }
 

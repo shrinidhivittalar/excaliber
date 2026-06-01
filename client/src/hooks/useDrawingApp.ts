@@ -1,7 +1,8 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppState, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import axios from 'axios'
 import * as api from '@/lib/api'
+import { drawingsApi } from '@/lib/api'
 import { sanitizeAppState, sanitizeScene, prepareElementsForCanvas } from '@/lib/scene'
 import type { Message } from '@/lib/types'
 
@@ -17,44 +18,6 @@ export const EMPTY_SCENE = {
   version: 2,
   elements: [],
   appState: { viewBackgroundColor: '#ffffff' },
-}
-
-function loadMessages(): Message[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.messages)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    try {
-      localStorage.removeItem(STORAGE_KEYS.messages)
-    } catch {
-      // ignore
-    }
-    return []
-  }
-}
-
-function loadScene(): object {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.scene)
-    if (!raw) return EMPTY_SCENE
-
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.elements)) {
-      localStorage.removeItem(STORAGE_KEYS.scene)
-      return EMPTY_SCENE
-    }
-
-    return sanitizeScene(parsed)
-  } catch {
-    try {
-      localStorage.removeItem(STORAGE_KEYS.scene)
-    } catch {
-      // ignore
-    }
-    return EMPTY_SCENE
-  }
 }
 
 function saveToStorage(messages: Message[], sceneJson: object) {
@@ -120,17 +83,74 @@ function applySceneToCanvas(excalidrawAPI: ExcalidrawImperativeAPI | null, scene
   }
 }
 
-export function useDrawingApp() {
-  const [messages, setMessages] = useState<Message[]>(loadMessages)
-  const [sceneJson, setSceneJson] = useState<object>(loadScene)
+function clearLocalStorage() {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.messages)
+    localStorage.removeItem(STORAGE_KEYS.scene)
+  } catch {
+    // ignore
+  }
+}
+
+export function useDrawingApp(drawingId?: string) {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [sceneJson, setSceneJson] = useState<object>(EMPTY_SCENE)
   const [isLoading, setIsLoading] = useState(false)
+  const [isCanvasLoading, setIsCanvasLoading] = useState(!!drawingId)
 
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const setExcalidrawAPI = useCallback((api: ExcalidrawImperativeAPI) => {
-    excalidrawAPIRef.current = api
-  }, [])
+  useEffect(() => {
+    let cancelled = false
+
+    async function initCanvas() {
+      if (!drawingId) {
+        setMessages([])
+        setSceneJson(EMPTY_SCENE)
+        clearLocalStorage()
+        setIsCanvasLoading(false)
+        applySceneToCanvas(excalidrawAPIRef.current, EMPTY_SCENE)
+        return
+      }
+
+      setIsCanvasLoading(true)
+      try {
+        const { data } = await drawingsApi.get(drawingId)
+        if (cancelled) return
+
+        const loadedMessages = Array.isArray(data.conversationHistory)
+          ? (data.conversationHistory as Message[])
+          : []
+        const loadedScene = sanitizeScene(data.sceneJson)
+
+        setMessages(loadedMessages)
+        setSceneJson(loadedScene)
+        applySceneToCanvas(excalidrawAPIRef.current, loadedScene)
+      } catch (error) {
+        if (cancelled) return
+        const errorContent =
+          getNetworkErrorMessage(error) ??
+          (axios.isAxiosError(error)
+            ? ((error.response?.data as { error?: string })?.error ?? error.message)
+            : 'Failed to load drawing')
+        setMessages([createMessage('error', errorContent)])
+        setSceneJson(EMPTY_SCENE)
+      } finally {
+        if (!cancelled) setIsCanvasLoading(false)
+      }
+    }
+
+    initCanvas()
+    return () => {
+      cancelled = true
+    }
+  }, [drawingId])
+
+  const setExcalidrawAPI = useCallback((excalidrawAPI: ExcalidrawImperativeAPI) => {
+    excalidrawAPIRef.current = excalidrawAPI
+    applySceneToCanvas(excalidrawAPI, sceneJson)
+  }, [sceneJson])
 
   const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim()
@@ -241,6 +261,8 @@ export function useDrawingApp() {
     messages,
     sceneJson,
     isLoading,
+    isCanvasLoading,
+    drawingId,
     sendMessage,
     clearAll,
     setExcalidrawAPI,
