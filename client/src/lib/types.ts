@@ -25,9 +25,31 @@ export interface DrawingMeta {
   createdAt: string
   isPublic: boolean
   shareId?: string
+  folderId?: string | null
+  tags: string[]
 }
 
 export interface DrawingFull extends DrawingMeta {
+  sceneJson: object
+  conversationHistory: Message[]
+}
+
+export interface Folder {
+  _id: string
+  name: string
+  color: string
+  drawingCount?: number
+}
+
+export interface VersionMeta {
+  _id: string
+  versionNumber: number
+  label: string
+  elementCount: number
+  createdAt: string
+}
+
+export interface VersionFull extends VersionMeta {
   sceneJson: object
   conversationHistory: Message[]
 }

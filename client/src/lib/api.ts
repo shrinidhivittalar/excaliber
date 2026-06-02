@@ -78,6 +78,24 @@ export const drawingsApi = {
   share: (id: string) => api.post(`/drawings/${id}/share`),
 }
 
+export const foldersApi = {
+  list: () => api.get('/folders'),
+  create: (data: { name: string; color?: string }) =>
+    api.post('/folders', data),
+  update: (id: string, data: { name?: string; color?: string }) =>
+    api.put(`/folders/${id}`, data),
+  delete: (id: string) => api.delete(`/folders/${id}`),
+}
+
+export const versionsApi = {
+  list: (drawingId: string) =>
+    api.get(`/drawings/${drawingId}/versions`),
+  get: (drawingId: string, versionId: string) =>
+    api.get(`/drawings/${drawingId}/versions/${versionId}`),
+  restore: (drawingId: string, versionId: string) =>
+    api.post(`/drawings/${drawingId}/versions/restore/${versionId}`),
+}
+
 // Share endpoint (no auth)
 export const shareApi = {
   get: (shareId: string) => axios.get(`/api/share/${shareId}`),
