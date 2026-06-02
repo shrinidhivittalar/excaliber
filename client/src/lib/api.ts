@@ -6,7 +6,15 @@ let _accessToken: string | null = null
 export function getAccessToken() { return _accessToken }
 export function setAccessToken(token: string | null) { _accessToken = token }
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '/api'
+function normalizeApiBaseUrl(rawUrl: string | undefined): string {
+  const url = rawUrl?.trim()
+  if (!url) return '/api'
+  if (url === '/api' || url.endsWith('/api')) return url
+  if (url.startsWith('http://') || url.startsWith('https://')) return `${url.replace(/\/$/, '')}/api`
+  return url
+}
+
+const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_URL as string | undefined)
 
 const api = axios.create({ baseURL: API_BASE_URL, timeout: 30000, withCredentials: true })
 

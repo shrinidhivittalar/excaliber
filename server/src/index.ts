@@ -26,6 +26,18 @@ const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:5173")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+function isAllowedOrigin(origin: string): boolean {
+  if (allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  if (!process.env.CLIENT_URL) {
+    return origin.startsWith("http://localhost:") || origin.endsWith(".vercel.app");
+  }
+
+  return false;
+}
+
 const chatLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
@@ -39,7 +51,7 @@ app.use(
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void
     ) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || isAllowedOrigin(origin)) {
         callback(null, true);
         return;
       }
@@ -65,7 +77,7 @@ async function startServer() {
   await connectDB();
   await initMcp();
 
-  app.listen(PORT, () => {
+  app.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
   });
 }

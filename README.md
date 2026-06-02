@@ -99,11 +99,35 @@ Recommended setup:
 - Backend (`server`) on Render
 
 ### Backend on Render
-- **Root Directory:** `server`
-- **Build command:** `npm install && npm run build`
-- **Start command:** `npm run start`
-- Alternative (repo root): `npm install && npm run build --workspace=server` / `npm run start --workspace=server`
-- You can also use the included `render.yaml` blueprint.
+Use **repo root** (recommended for npm workspaces):
+
+| Setting | Value |
+|--------|--------|
+| Root Directory | *(leave empty)* |
+| Build Command | `npm install && npm run build --workspace=server` |
+| Start Command | `npm run start --workspace=server` |
+
+Or use **server-only** root:
+
+| Setting | Value |
+|--------|--------|
+| Root Directory | `server` |
+| Build Command | `npm install && npm run build` |
+| Start Command | `npm run start` |
+
+You can also deploy via the included `render.yaml` blueprint.
+
+### MongoDB Atlas (required for Render)
+Render uses dynamic IPs, so Atlas must allow external connections:
+
+1. Open [MongoDB Atlas](https://cloud.mongodb.com) → your project → **Network Access**
+2. Click **Add IP Address** → **Allow Access from Anywhere** (`0.0.0.0/0`)
+3. Confirm (use restricted IPs only if you have a fixed egress IP)
+4. In Render → **Environment**, set `MONGODB_URI` to your Atlas connection string  
+   (format: `mongodb+srv://<user>:<password>@<cluster>.mongodb.net/<dbname>?retryWrites=true&w=majority`)
+5. Redeploy the Render service
+
+If the password contains special characters (`@`, `#`, etc.), URL-encode it in the connection string.
 - Required env vars:
   - `MONGODB_URI`
   - `JWT_ACCESS_SECRET`

@@ -2,9 +2,8 @@ services:
   - type: web
     name: excaliber-api
     runtime: node
-    rootDir: server
-    buildCommand: npm install && npm run build
-    startCommand: npm run start
+    buildCommand: npm install && npm run build --workspace=server
+    startCommand: npm run start --workspace=server
     envVars:
       - key: NODE_ENV
         value: production
