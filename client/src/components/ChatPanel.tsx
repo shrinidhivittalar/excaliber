@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import type { Message } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import { cn, detectDiagramType } from '@/lib/utils'
 
 const MAX_CHARS = 1000
 
@@ -47,6 +47,7 @@ function LoadingBubble() {
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
   const isError = message.role === 'error'
+  const diagramType = message.role === 'assistant' ? detectDiagramType(message.content) : null
 
   return (
     <div className={cn('flex flex-col gap-1', isUser ? 'items-end' : 'items-start')}>
@@ -72,6 +73,11 @@ function MessageBubble({ message }: { message: Message }) {
             </span>
           ))}
         </div>
+      )}
+      {diagramType && (
+        <span className="inline-block rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/40">
+          {diagramType}
+        </span>
       )}
     </div>
   )

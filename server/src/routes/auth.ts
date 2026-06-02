@@ -1,4 +1,5 @@
 import { Router, type Response } from "express";
+import type { CookieOptions } from "express";
 import bcrypt from "bcrypt";
 import { User } from "../models/User";
 import { RefreshToken } from "../models/RefreshToken";
@@ -13,12 +14,13 @@ const router = Router();
 
 const BCRYPT_ROUNDS = 12;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const isProduction = process.env.NODE_ENV === "production";
 
-const REFRESH_COOKIE_OPTIONS = {
+const REFRESH_COOKIE_OPTIONS: CookieOptions = {
   httpOnly: true,
   path: "/api/auth",
-  sameSite: "lax" as const,
-  secure: false,
+  sameSite: isProduction ? "none" : "lax",
+  secure: isProduction,
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
@@ -30,8 +32,8 @@ function clearRefreshTokenCookie(res: Response): void {
   res.clearCookie("refreshToken", {
     httpOnly: true,
     path: "/api/auth",
-    sameSite: "lax",
-    secure: false,
+    sameSite: isProduction ? "none" : "lax",
+    secure: isProduction,
   });
 }
 

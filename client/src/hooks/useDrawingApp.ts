@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppState, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
+import { parseMermaidToExcalidraw } from '@excalidraw/mermaid-to-excalidraw'
 import axios from 'axios'
 import * as api from '@/lib/api'
 import { drawingsApi } from '@/lib/api'
@@ -318,7 +319,23 @@ export function useDrawingApp() {
         const updatedMessages = [...nextMessages, assistantMessage]
 
         setMessages(updatedMessages)
-        const safeScene = sanitizeScene(data.sceneJson)
+        let safeScene = sanitizeScene(data.sceneJson)
+
+        if (data.mermaidDiagram) {
+          try {
+            const { elements } = await parseMermaidToExcalidraw(data.mermaidDiagram)
+            const mermaidScene = sanitizeScene({
+              type: 'excalidraw',
+              version: 2,
+              elements,
+              appState: {},
+            })
+            safeScene = mermaidScene
+          } catch {
+            // Fall back to normal sceneJson
+          }
+        }
+
         setSceneJson(safeScene)
         saveToStorage(updatedMessages, safeScene)
         try {

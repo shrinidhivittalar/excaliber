@@ -30,6 +30,20 @@ const drawingSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  folderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Folder',
+    default: null,
+    index: true,
+  },
+  tags: {
+    type: [String],
+    default: [],
+    validate: {
+      validator: (arr: string[]) => arr.length <= 10,
+      message: 'Maximum 10 tags per drawing',
+    },
+  },
 }, {
   timestamps: true,
 })

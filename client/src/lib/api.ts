@@ -95,7 +95,12 @@ export const sendMessage = async (message: string, history: Message[], sceneJson
       .map(({ role, content }) => ({ role, content })),
     sceneJson
   })
-  return response.data as { reply: string, sceneJson: object, toolsUsed: string[] }
+  return response.data as {
+    reply: string
+    sceneJson: object
+    toolsUsed: string[]
+    mermaidDiagram?: string
+  }
 }
 
 export const clearCanvas = async () => {

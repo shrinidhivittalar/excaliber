@@ -134,6 +134,52 @@ export function normalizeDrawableElements(elements: unknown[]): unknown[] {
   );
 }
 
+export function applyAutoLayout(elements: unknown[]): unknown[] {
+  const drawable = elements.filter((el) => {
+    const e = el as Record<string, unknown>;
+    return e.type && !PSEUDO_ELEMENT_TYPES.has(e.type as string);
+  });
+
+  if (drawable.length === 0) return elements;
+
+  const xs = drawable.map(
+    (el) =>
+      (typeof (el as Record<string, unknown>).x === "number"
+        ? ((el as Record<string, unknown>).x as number)
+        : 0)
+  );
+  const xSpread = Math.max(...xs) - Math.min(...xs);
+
+  if (xSpread < 50 && drawable.length > 2) {
+    const COLS = 3;
+    const CELL_W = 200;
+    const CELL_H = 100;
+    const GAP_X = 60;
+    const GAP_Y = 40;
+    const ORIGIN_X = 80;
+    const ORIGIN_Y = 80;
+
+    return (elements as Record<string, unknown>[]).map((el) => {
+      if (PSEUDO_ELEMENT_TYPES.has(el.type as string)) return el;
+      const drawableIndex = drawable.findIndex(
+        (d) => (d as Record<string, unknown>).id === el.id
+      );
+      if (drawableIndex === -1) return el;
+      const col = drawableIndex % COLS;
+      const row = Math.floor(drawableIndex / COLS);
+      return {
+        ...el,
+        x: ORIGIN_X + col * (CELL_W + GAP_X),
+        y: ORIGIN_Y + row * (CELL_H + GAP_Y),
+        width: typeof el.width === "number" ? el.width : CELL_W,
+        height: typeof el.height === "number" ? el.height : CELL_H,
+      };
+    });
+  }
+
+  return elements;
+}
+
 export function buildSceneFromElements(
   elements: unknown[],
   currentScene: object,
@@ -149,7 +195,7 @@ export function buildSceneFromElements(
   return {
     type: "excalidraw",
     version: 2,
-    elements: normalizeDrawableElements(elements),
+    elements: applyAutoLayout(normalizeDrawableElements(elements)),
     appState: {
       ...(base.appState ?? {}),
       ...(checkpointId ? { excalidrawMcpCheckpointId: checkpointId } : {}),

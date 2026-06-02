@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "nodemon --exec ts-node src/index.ts",
-    "start": "ts-node src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
     "setup:mcp": "node scripts/setup-excalidraw-mcp.mjs",
     "postinstall": "node scripts/setup-excalidraw-mcp.mjs --warn-only"
   },

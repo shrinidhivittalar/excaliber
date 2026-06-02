@@ -22,6 +22,7 @@ export interface ProcessMessageResult {
   reply: string;
   sceneJson: object;
   toolsUsed: string[];
+  mermaidDiagram?: string;
 }
 
 const MAX_FUNCTION_ITERATIONS = 10;
@@ -312,6 +313,22 @@ export async function processMessage(
       }
 
       iterations += 1;
+    }
+
+    const mermaidMatch = reply.match(/```mermaid\n([\s\S]+?)\n```/);
+    if (mermaidMatch) {
+      const mermaidCode = mermaidMatch[1];
+      return {
+        reply:
+          reply.replace(/```mermaid[\s\S]+?```/, "").trim() ||
+          "Here is the diagram.",
+        sceneJson: buildSceneFromElements(
+          (sceneJson as { elements?: unknown[] }).elements ?? [],
+          sceneJson
+        ),
+        toolsUsed,
+        mermaidDiagram: mermaidCode,
+      };
     }
 
     return {
