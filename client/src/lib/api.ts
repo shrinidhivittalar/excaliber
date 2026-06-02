@@ -6,7 +6,9 @@ let _accessToken: string | null = null
 export function getAccessToken() { return _accessToken }
 export function setAccessToken(token: string | null) { _accessToken = token }
 
-const api = axios.create({ baseURL: '/api', timeout: 30000, withCredentials: true })
+const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '/api'
+
+const api = axios.create({ baseURL: API_BASE_URL, timeout: 30000, withCredentials: true })
 
 // Request interceptor: attach access token from memory
 api.interceptors.request.use((config) => {
@@ -37,7 +39,7 @@ api.interceptors.response.use(
       original._retry = true
       isRefreshing = true
       try {
-        const { data } = await axios.post('/api/auth/refresh', {}, { withCredentials: true })
+        const { data } = await api.post('/auth/refresh', {})
         setAccessToken(data.accessToken)
         refreshQueue.forEach((cb) => cb(data.accessToken))
         refreshQueue = []
@@ -72,8 +74,16 @@ export const drawingsApi = {
   get: (id: string) => api.get(`/drawings/${id}`),
   create: (data: { title?: string; sceneJson: object; conversationHistory?: object[] }) =>
     api.post('/drawings', data),
-  update: (id: string, data: { title?: string; sceneJson?: object; conversationHistory?: object[] }) =>
-    api.put(`/drawings/${id}`, data),
+  update: (
+    id: string,
+    data: {
+      title?: string
+      sceneJson?: object
+      conversationHistory?: object[]
+      folderId?: string | null
+      tags?: string[]
+    }
+  ) => api.put(`/drawings/${id}`, data),
   delete: (id: string) => api.delete(`/drawings/${id}`),
   share: (id: string) => api.post(`/drawings/${id}/share`),
 }
@@ -98,7 +108,7 @@ export const versionsApi = {
 
 // Share endpoint (no auth)
 export const shareApi = {
-  get: (shareId: string) => axios.get(`/api/share/${shareId}`),
+  get: (shareId: string) => api.get(`/share/${shareId}`),
 }
 
 // Existing canvas endpoints (keep these)

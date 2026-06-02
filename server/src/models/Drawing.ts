@@ -48,4 +48,6 @@ const drawingSchema = new mongoose.Schema({
   timestamps: true,
 })
 
+drawingSchema.index({ title: 'text', tags: 'text' })
+
 export const Drawing = mongoose.model('Drawing', drawingSchema)

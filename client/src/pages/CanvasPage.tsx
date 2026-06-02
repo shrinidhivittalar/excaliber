@@ -4,6 +4,8 @@ import { Excalidraw } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
 import { HelpCircle } from 'lucide-react'
 import { ChatPanel } from '@/components/ChatPanel'
+import { DrawingInfoBar } from '@/components/DrawingInfoBar'
+import { VersionHistoryPanel } from '@/components/VersionHistoryPanel'
 import {
   Tooltip,
   TooltipContent,
@@ -45,6 +47,8 @@ export default function CanvasPage() {
     isCanvasLoading,
     currentDrawingId,
     currentTitle,
+    currentFolderName,
+    currentTags,
     isSaving,
     sendMessage,
     clearAll,
@@ -56,6 +60,13 @@ export default function CanvasPage() {
     setCurrentTitle,
     setExcalidrawAPI,
     handleSceneChange,
+    showVersionHistory,
+    toggleVersionHistory,
+    versions,
+    versionsLoading,
+    restoreVersion,
+    currentVersionNumber,
+    versionToast,
   } = useDrawingApp()
 
   useEffect(() => {
@@ -81,7 +92,7 @@ export default function CanvasPage() {
       if (accept) {
         importLocalStorageDraft()
         void (async () => {
-          const newId = await saveDrawing('Recovered Drawing')
+          const newId = await saveDrawing({ title: 'Recovered Drawing' })
           if (newId) {
             navigate(`/drawing/${newId}`, { replace: true })
           }
@@ -107,8 +118,12 @@ export default function CanvasPage() {
     appState?: Record<string, unknown>
   }
 
-  const handleSave = async () => {
-    const newId = await saveDrawing()
+  const handleSave = async (options?: {
+    title?: string
+    folderId?: string | null
+    tags?: string[]
+  }) => {
+    const newId = await saveDrawing(options)
     if (newId && !drawingIdFromUrl) {
       navigate(`/drawing/${newId}`, { replace: true })
     }
@@ -117,7 +132,7 @@ export default function CanvasPage() {
   const handleTitleChange = async (title: string) => {
     setCurrentTitle(title)
     if (currentDrawingId) {
-      await saveDrawing(title)
+      await saveDrawing({ title })
     }
   }
 
@@ -169,19 +184,46 @@ export default function CanvasPage() {
           </TooltipContent>
         </Tooltip>
 
-        {!showLoadingOverlay && (
-          <ChatPanel
-            messages={messages}
-            isLoading={isLoading}
-            onSendMessage={sendMessage}
-            onClear={clearAll}
-            onSave={handleSave}
-            onShare={handleShare}
-            isSaving={isSaving}
-            currentTitle={currentTitle}
-            onTitleChange={handleTitleChange}
-            currentDrawingId={currentDrawingId}
+        {!showLoadingOverlay && currentDrawingId && (
+          <DrawingInfoBar
+            title={currentTitle}
+            folderName={currentFolderName}
+            tags={currentTags}
           />
+        )}
+
+        {!showLoadingOverlay && (
+          <>
+            <VersionHistoryPanel
+              open={showVersionHistory}
+              onClose={() => toggleVersionHistory()}
+              versions={versions}
+              isLoading={versionsLoading}
+              currentVersionNumber={currentVersionNumber}
+              onRestore={restoreVersion}
+            />
+
+            {versionToast && (
+              <div className="fixed bottom-24 right-[400px] z-[60] rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-xs text-emerald-200 shadow-lg">
+                {versionToast}
+              </div>
+            )}
+
+            <ChatPanel
+              messages={messages}
+              isLoading={isLoading}
+              onSendMessage={sendMessage}
+              onClear={clearAll}
+              onSave={handleSave}
+              onShare={handleShare}
+              isSaving={isSaving}
+              currentTitle={currentTitle}
+              onTitleChange={handleTitleChange}
+              currentDrawingId={currentDrawingId}
+              showVersionHistory={showVersionHistory}
+              onToggleVersionHistory={toggleVersionHistory}
+            />
+          </>
         )}
       </div>
     </TooltipProvider>

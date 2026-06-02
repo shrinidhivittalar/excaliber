@@ -3,9 +3,9 @@ import type { AppState, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/t
 import { parseMermaidToExcalidraw } from '@excalidraw/mermaid-to-excalidraw'
 import axios from 'axios'
 import * as api from '@/lib/api'
-import { drawingsApi } from '@/lib/api'
+import { drawingsApi, foldersApi, versionsApi } from '@/lib/api'
 import { sanitizeAppState, sanitizeScene, prepareElementsForCanvas } from '@/lib/scene'
-import type { DrawingFull, Message } from '@/lib/types'
+import type { DrawingFull, Folder, Message, VersionMeta } from '@/lib/types'
 
 const STORAGE_KEYS = {
   messages: 'ai-drawing-messages',
@@ -125,6 +125,13 @@ export function hasLocalStorageDraft(): boolean {
   return loadSceneFromStorage() !== null
 }
 
+export interface SaveDrawingOptions {
+  title?: string
+  folderId?: string | null
+  tags?: string[]
+  silent?: boolean
+}
+
 export function useDrawingApp() {
   const [messages, setMessages] = useState<Message[]>([])
   const [sceneJson, setSceneJson] = useState<object>(EMPTY_SCENE)
@@ -132,7 +139,14 @@ export function useDrawingApp() {
   const [isCanvasLoading, setIsCanvasLoading] = useState(false)
   const [currentDrawingId, setCurrentDrawingId] = useState<string | null>(null)
   const [currentTitle, setCurrentTitle] = useState('Untitled Drawing')
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null)
+  const [currentFolderName, setCurrentFolderName] = useState<string | null>(null)
+  const [currentTags, setCurrentTags] = useState<string[]>([])
   const [isSaving, setIsSaving] = useState(false)
+  const [showVersionHistory, setShowVersionHistory] = useState(false)
+  const [versions, setVersions] = useState<VersionMeta[]>([])
+  const [versionsLoading, setVersionsLoading] = useState(false)
+  const [versionToast, setVersionToast] = useState<string | null>(null)
 
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null)
   const sceneDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -142,6 +156,8 @@ export function useDrawingApp() {
   const sceneJsonRef = useRef(sceneJson)
   const currentDrawingIdRef = useRef(currentDrawingId)
   const currentTitleRef = useRef(currentTitle)
+  const currentFolderIdRef = useRef(currentFolderId)
+  const currentTagsRef = useRef(currentTags)
 
   useEffect(() => {
     messagesRef.current = messages
@@ -159,6 +175,98 @@ export function useDrawingApp() {
     currentTitleRef.current = currentTitle
   }, [currentTitle])
 
+  useEffect(() => {
+    currentFolderIdRef.current = currentFolderId
+  }, [currentFolderId])
+
+  useEffect(() => {
+    currentTagsRef.current = currentTags
+  }, [currentTags])
+
+  const loadVersions = useCallback(async (drawingId?: string) => {
+    const id = drawingId ?? currentDrawingIdRef.current
+    if (!id) {
+      setVersions([])
+      return
+    }
+
+    setVersionsLoading(true)
+    try {
+      const { data } = await versionsApi.list(id)
+      setVersions(data as VersionMeta[])
+    } catch (error) {
+      console.warn('Failed to load versions:', error)
+    } finally {
+      setVersionsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (currentDrawingId) {
+      void loadVersions()
+    } else {
+      setVersions([])
+      setShowVersionHistory(false)
+    }
+  }, [currentDrawingId, loadVersions])
+
+  const toggleVersionHistory = useCallback(() => {
+    setShowVersionHistory((prev) => {
+      const next = !prev
+      if (next && currentDrawingIdRef.current) {
+        void loadVersions()
+      }
+      return next
+    })
+  }, [loadVersions])
+
+  const restoreVersion = useCallback(
+    async (versionId: string, versionNumber: number) => {
+      const drawingId = currentDrawingIdRef.current
+      if (!drawingId) return
+
+      const { data } = await versionsApi.restore(drawingId, versionId)
+      const drawing = data.drawing as DrawingFull
+
+      const loadedMessages = Array.isArray(drawing.conversationHistory)
+        ? drawing.conversationHistory
+        : []
+      const loadedScene = sanitizeScene(drawing.sceneJson)
+
+      messagesRef.current = loadedMessages
+      sceneJsonRef.current = loadedScene
+      setMessages(loadedMessages)
+      setSceneJson(loadedScene)
+      applySceneToCanvas(excalidrawAPIRef.current, loadedScene)
+      saveToStorage(loadedMessages, loadedScene)
+
+      await loadVersions()
+      setVersionToast(`Restored to v${versionNumber}`)
+      window.setTimeout(() => setVersionToast(null), 3000)
+    },
+    [loadVersions]
+  )
+
+  const currentVersionNumber =
+    versions.length > 0
+      ? Math.max(...versions.map((v) => v.versionNumber))
+      : null
+
+  const resolveFolderName = useCallback(async (folderId: string | null) => {
+    if (!folderId) {
+      setCurrentFolderName(null)
+      return
+    }
+
+    try {
+      const { data } = await foldersApi.list()
+      const folder = (data as Folder[]).find((item) => item._id === folderId)
+      setCurrentFolderName(folder?.name ?? null)
+    } catch {
+      setCurrentFolderName(null)
+    }
+  }, [])
+
   const loadDrawing = useCallback(async (id: string) => {
     setIsCanvasLoading(true)
     try {
@@ -174,6 +282,10 @@ export function useDrawingApp() {
       setSceneJson(loadedScene)
       setCurrentDrawingId(drawing._id)
       setCurrentTitle(drawing.title ?? 'Untitled Drawing')
+      const folderId = drawing.folderId ?? null
+      setCurrentFolderId(folderId)
+      setCurrentTags(Array.isArray(drawing.tags) ? drawing.tags : [])
+      await resolveFolderName(folderId)
       applySceneToCanvas(excalidrawAPIRef.current, loadedScene)
       clearLocalStorage()
     } catch (error) {
@@ -186,10 +298,13 @@ export function useDrawingApp() {
       setSceneJson(EMPTY_SCENE)
       setCurrentDrawingId(null)
       setCurrentTitle('Untitled Drawing')
+      setCurrentFolderId(null)
+      setCurrentFolderName(null)
+      setCurrentTags([])
     } finally {
       setIsCanvasLoading(false)
     }
-  }, [])
+  }, [resolveFolderName])
 
   const importLocalStorageDraft = useCallback(() => {
     const storedScene = loadSceneFromStorage()
@@ -202,6 +317,9 @@ export function useDrawingApp() {
     setSceneJson(storedScene)
     setCurrentDrawingId(null)
     setCurrentTitle('Untitled Drawing')
+    setCurrentFolderId(null)
+    setCurrentFolderName(null)
+    setCurrentTags([])
     applySceneToCanvas(excalidrawAPIRef.current, storedScene)
     return true
   }, [])
@@ -209,6 +327,9 @@ export function useDrawingApp() {
   const resetFreshCanvas = useCallback(() => {
     setCurrentDrawingId(null)
     setCurrentTitle('Untitled Drawing')
+    setCurrentFolderId(null)
+    setCurrentFolderName(null)
+    setCurrentTags([])
     setMessages([])
     setSceneJson(EMPTY_SCENE)
     clearLocalStorage()
@@ -217,8 +338,13 @@ export function useDrawingApp() {
   }, [])
 
   const saveDrawing = useCallback(
-    async (title?: string, options?: { silent?: boolean }) => {
-      const nextTitle = title ?? currentTitleRef.current
+    async (options?: SaveDrawingOptions): Promise<string | null> => {
+      const nextTitle = options?.title ?? currentTitleRef.current
+      const nextFolderId =
+        options?.folderId !== undefined
+          ? options.folderId
+          : currentFolderIdRef.current
+      const nextTags = options?.tags ?? currentTagsRef.current
       const silent = options?.silent ?? false
 
       if (!silent) setIsSaving(true)
@@ -227,11 +353,17 @@ export function useDrawingApp() {
           title: nextTitle,
           sceneJson: sceneJsonRef.current,
           conversationHistory: messagesRef.current,
+          folderId: nextFolderId,
+          tags: nextTags,
         }
 
         if (currentDrawingIdRef.current) {
           await drawingsApi.update(currentDrawingIdRef.current, payload)
           setCurrentTitle(nextTitle)
+          setCurrentFolderId(nextFolderId)
+          setCurrentTags(nextTags)
+          await resolveFolderName(nextFolderId)
+          void loadVersions()
           return currentDrawingIdRef.current
         }
 
@@ -239,13 +371,20 @@ export function useDrawingApp() {
         const drawing = data as DrawingFull
         setCurrentDrawingId(drawing._id)
         setCurrentTitle(drawing.title ?? nextTitle)
+        const savedFolderId = drawing.folderId ?? nextFolderId
+        setCurrentFolderId(savedFolderId)
+        setCurrentTags(
+          Array.isArray(drawing.tags) ? drawing.tags : nextTags
+        )
+        await resolveFolderName(savedFolderId)
         clearLocalStorage()
+        void loadVersions(drawing._id)
         return drawing._id
       } finally {
         if (!silent) setIsSaving(false)
       }
     },
-    []
+    [loadVersions, resolveFolderName]
   )
 
   const autoSaveDrawing = useCallback(
@@ -259,11 +398,12 @@ export function useDrawingApp() {
           sceneJson: updatedScene,
           conversationHistory: messagesRef.current,
         })
+        void loadVersions()
       } catch (error) {
         console.warn('Auto-save failed:', error)
       }
     },
-    []
+    [loadVersions]
   )
 
   const shareDrawing = useCallback(async (): Promise<{
@@ -272,7 +412,7 @@ export function useDrawingApp() {
   } | null> => {
     let drawingId = currentDrawingIdRef.current
     if (!drawingId) {
-      drawingId = (await saveDrawing()) ?? null
+      drawingId = (await saveDrawing({ silent: true })) ?? null
     }
     if (!drawingId) return null
 
@@ -426,6 +566,9 @@ export function useDrawingApp() {
     isCanvasLoading,
     currentDrawingId,
     currentTitle,
+    currentFolderId,
+    currentFolderName,
+    currentTags,
     isSaving,
     sendMessage,
     clearAll,
@@ -437,5 +580,13 @@ export function useDrawingApp() {
     setCurrentTitle,
     setExcalidrawAPI,
     handleSceneChange,
+    showVersionHistory,
+    toggleVersionHistory,
+    versions,
+    versionsLoading,
+    loadVersions,
+    restoreVersion,
+    currentVersionNumber,
+    versionToast,
   }
 }

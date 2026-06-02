@@ -21,7 +21,10 @@ import shareRoutes from "./routes/share";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const clientOrigin = process.env.CLIENT_URL || "http://localhost:5173";
+const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:5173")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 const chatLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -30,7 +33,18 @@ const chatLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-app.use(cors({ origin: clientOrigin, credentials: true }));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: "2mb" }));
 app.use(cookieParser());
 

@@ -7,6 +7,16 @@ const PSEUDO_ELEMENT_TYPES = new Set([
 ]);
 
 const LINEAR_TYPES = new Set(["arrow", "line", "draw"]);
+const SHAPE_TYPES = new Set(["rectangle", "ellipse", "diamond"]);
+
+const BACKGROUND_PALETTE = [
+  "transparent",
+  "#dbeafe",
+  "#dcfce7",
+  "#fef9c3",
+  "#fce7f3",
+  "#ede9fe",
+] as const;
 
 type ElementRecord = Record<string, unknown>;
 
@@ -56,8 +66,10 @@ function normalizeLabel(label: unknown): { text: string; fontSize: number } | un
 }
 
 function normalizeElement(el: unknown, index: number): ElementRecord {
-  const raw = { ...(el as ElementRecord) };
+  const source = el as ElementRecord;
+  const raw = { ...source };
   const type = typeof raw.type === "string" ? raw.type : "rectangle";
+  const hadExplicitBackground = source.backgroundColor !== undefined;
 
   if (!raw.id || typeof raw.id !== "string") {
     raw.id = `el-${index}-${crypto.randomUUID().slice(0, 8)}`;
@@ -66,8 +78,14 @@ function normalizeElement(el: unknown, index: number): ElementRecord {
   raw.type = type;
   raw.x = typeof raw.x === "number" ? raw.x : 0;
   raw.y = typeof raw.y === "number" ? raw.y : 0;
-  raw.width = typeof raw.width === "number" ? raw.width : 120;
-  raw.height = typeof raw.height === "number" ? raw.height : 60;
+
+  if (SHAPE_TYPES.has(type)) {
+    raw.width = typeof raw.width === "number" ? raw.width : 160;
+    raw.height = typeof raw.height === "number" ? raw.height : 70;
+  } else {
+    raw.width = typeof raw.width === "number" ? raw.width : 120;
+    raw.height = typeof raw.height === "number" ? raw.height : 60;
+  }
 
   const label = normalizeLabel(raw.label);
   if (label) {
@@ -90,6 +108,16 @@ function normalizeElement(el: unknown, index: number): ElementRecord {
     if (type === "arrow" && raw.endArrowhead === undefined) {
       raw.endArrowhead = "arrow";
     }
+
+    if (raw.strokeWidth === undefined) {
+      raw.strokeWidth = 1.5;
+    }
+    if (raw.roughness === undefined) {
+      raw.roughness = 0;
+    }
+    if (raw.strokeStyle === undefined) {
+      raw.strokeStyle = "solid";
+    }
   }
 
   if (type === "text") {
@@ -101,7 +129,7 @@ function normalizeElement(el: unknown, index: number): ElementRecord {
           : "Label");
     }
     if (typeof raw.fontSize !== "number") {
-      raw.fontSize = 16;
+      raw.fontSize = 14;
     }
   }
 
@@ -109,7 +137,16 @@ function normalizeElement(el: unknown, index: number): ElementRecord {
     raw.strokeColor = "#1e1e1e";
   }
 
-  if (raw.backgroundColor === undefined) {
+  if (SHAPE_TYPES.has(type)) {
+    if (!hadExplicitBackground) {
+      raw.backgroundColor = BACKGROUND_PALETTE[index % BACKGROUND_PALETTE.length];
+    } else if (raw.backgroundColor === undefined) {
+      raw.backgroundColor = "transparent";
+    }
+    if (raw.strokeWidth === undefined) {
+      raw.strokeWidth = 1.5;
+    }
+  } else if (raw.backgroundColor === undefined) {
     raw.backgroundColor = "transparent";
   }
 

@@ -24,6 +24,13 @@ export default function AuthPage() {
   const navigate = useNavigate()
   const { login, register, isAuthenticated, isLoading } = useAuth()
 
+  const [tab, setTab] = useState<'signin' | 'register'>('signin')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black text-white/40">
@@ -35,13 +42,6 @@ export default function AuthPage() {
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />
   }
-
-  const [tab, setTab] = useState<'signin' | 'register'>('signin')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()

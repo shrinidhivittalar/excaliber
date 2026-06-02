@@ -49,7 +49,8 @@ async function resolveFolderId(
 
 function buildListFilter(
   userId: string,
-  query: AuthRequest["query"]
+  query: AuthRequest["query"],
+  options?: { skipSearch?: boolean }
 ): Record<string, unknown> {
   const filter: Record<string, unknown> = { userId };
 
@@ -67,27 +68,83 @@ function buildListFilter(
     filter.tags = { $regex: new RegExp(`^${escapeRegex(tag)}$`, "i") };
   }
 
-  const q = typeof query.q === "string" ? query.q.trim() : undefined;
-  if (q) {
-    const regex = new RegExp(escapeRegex(q), "i");
-    filter.$and = [
-      ...(Array.isArray(filter.$and) ? filter.$and : []),
-      { $or: [{ title: regex }, { tags: regex }] },
-    ];
+  if (!options?.skipSearch) {
+    const q = typeof query.q === "string" ? query.q.trim() : undefined;
+    if (q) {
+      const regex = new RegExp(escapeRegex(q), "i");
+      filter.$and = [
+        ...(Array.isArray(filter.$and) ? filter.$and : []),
+        { $or: [{ title: regex }, { tags: regex }] },
+      ];
+    }
   }
 
   return filter;
 }
 
-router.get("/", async (req: AuthRequest, res) => {
-  const filter = buildListFilter(req.userId!, req.query);
+function versionLabelFromHistory(
+  conversationHistory: unknown[],
+  fallback: string
+): string {
+  if (!Array.isArray(conversationHistory)) {
+    return fallback;
+  }
 
-  const drawings = await Drawing.find(filter)
-    .select(
-      "_id title updatedAt createdAt isPublic shareId folderId tags"
-    )
-    .sort({ updatedAt: -1 })
-    .lean();
+  const userMessages = conversationHistory.filter(
+    (message): message is { role: string; content: string } =>
+      !!message &&
+      typeof message === "object" &&
+      (message as { role?: string }).role === "user" &&
+      typeof (message as { content?: unknown }).content === "string"
+  );
+
+  const lastMessage = userMessages.at(-1);
+  if (!lastMessage) {
+    return fallback;
+  }
+
+  const content = lastMessage.content.trim();
+  if (!content) {
+    return fallback;
+  }
+
+  return content.length > 40 ? `${content.slice(0, 40)}...` : content;
+}
+
+router.get("/", async (req: AuthRequest, res) => {
+  const userId = req.userId!;
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : undefined;
+  const baseFilter = buildListFilter(userId, req.query, { skipSearch: true });
+  const select =
+    "_id title updatedAt createdAt isPublic shareId folderId tags";
+
+  let drawings;
+
+  if (q) {
+    try {
+      drawings = await Drawing.find(
+        { ...baseFilter, $text: { $search: q } },
+        { score: { $meta: "textScore" } }
+      )
+        .select(select)
+        .sort({ score: { $meta: "textScore" }, updatedAt: -1 })
+        .lean();
+    } catch {
+      const regex = new RegExp(escapeRegex(q), "i");
+      drawings = await Drawing.find({
+        ...baseFilter,
+        $or: [{ title: regex }, { tags: regex }],
+      })
+        .select(select)
+        .sort({ updatedAt: -1 })
+        .lean();
+    }
+  } else {
+    drawings = await Drawing.find(baseFilter)
+      .select(select)
+      .sort({ updatedAt: -1 })
+      .lean();
+  }
 
   res.json(drawings);
 });
@@ -193,12 +250,17 @@ router.put("/:id", async (req: AuthRequest, res) => {
     return;
   }
 
+  const versionLabel = versionLabelFromHistory(
+    drawing.conversationHistory,
+    "Auto-save"
+  );
+
   await createVersion(
     drawing._id,
     req.userId!,
     drawing.sceneJson,
     drawing.conversationHistory,
-    "Auto-save"
+    versionLabel
   );
 
   res.json(drawing);

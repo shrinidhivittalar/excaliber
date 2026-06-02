@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, Check, Loader2, Save, Share2, Trash2 } from 'lucide-react'
+import { ArrowUp, Check, Clock, Loader2, Save, Share2, Trash2 } from 'lucide-react'
+import { SaveDrawingDialog } from '@/components/SaveDrawingDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -21,12 +22,18 @@ interface ChatPanelProps {
   isLoading: boolean
   onSendMessage: (text: string) => void
   onClear: () => void
-  onSave: () => Promise<void>
+  onSave: (options?: {
+    title?: string
+    folderId?: string | null
+    tags?: string[]
+  }) => Promise<string | null | void>
   onShare: () => Promise<string | null>
   isSaving: boolean
   currentTitle: string
   onTitleChange: (title: string) => void
   currentDrawingId: string | null
+  showVersionHistory?: boolean
+  onToggleVersionHistory?: () => void
 }
 
 function LoadingBubble() {
@@ -94,12 +101,15 @@ export function ChatPanel({
   currentTitle,
   onTitleChange,
   currentDrawingId,
+  showVersionHistory = false,
+  onToggleVersionHistory,
 }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const [toast, setToast] = useState<string | null>(null)
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(currentTitle)
   const [saveSucceeded, setSaveSucceeded] = useState(false)
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -182,11 +192,30 @@ export function ChatPanel({
   }
 
   const handleSave = async () => {
+    if (!currentDrawingId) {
+      setSaveDialogOpen(true)
+      return
+    }
+
     try {
       await onSave()
       setSaveSucceeded(true)
     } catch {
       showToast('Failed to save drawing')
+    }
+  }
+
+  const handleSaveFromDialog = async (data: {
+    title: string
+    folderId: string | null
+    tags: string[]
+  }) => {
+    try {
+      await onSave(data)
+      setSaveSucceeded(true)
+    } catch {
+      showToast('Failed to save drawing')
+      throw new Error('Save failed')
     }
   }
 
@@ -213,6 +242,15 @@ export function ChatPanel({
   }
 
   return (
+    <>
+    <SaveDrawingDialog
+      open={saveDialogOpen}
+      onOpenChange={setSaveDialogOpen}
+      messages={messages}
+      isSaving={isSaving}
+      onSave={handleSaveFromDialog}
+    />
+
     <div
       className="chat-panel-enter fixed bottom-5 right-5 z-50 flex h-[560px] w-[380px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/85 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-md"
     >
@@ -224,7 +262,12 @@ export function ChatPanel({
 
       <header className="flex shrink-0 items-start justify-between gap-2 border-b border-white/10 px-4 py-3">
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-medium text-white">✦ AI Drawing Engine</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-medium text-white">✦ AI Drawing Engine</h2>
+            {saveSucceeded && (
+              <span className="text-[10px] font-medium text-emerald-400">Saved ✓</span>
+            )}
+          </div>
           {isEditingTitle ? (
             <Input
               autoFocus
@@ -270,6 +313,22 @@ export function ChatPanel({
               <Save className="size-3.5" />
             )}
           </Button>
+
+          {currentDrawingId && onToggleVersionHistory && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={onToggleVersionHistory}
+              className={cn(
+                'text-white/50 hover:bg-white/10 hover:text-white',
+                showVersionHistory && 'bg-white/10 text-white'
+              )}
+              aria-label="Version history"
+            >
+              <Clock className="size-3.5" />
+            </Button>
+          )}
 
           {currentDrawingId && (
             <Button
@@ -363,5 +422,6 @@ export function ChatPanel({
         </div>
       </div>
     </div>
+    </>
   )
 }
