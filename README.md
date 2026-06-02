@@ -99,8 +99,11 @@ Recommended setup:
 - Backend (`server`) on Render
 
 ### Backend on Render
-- Build command: `npm run build --workspace=server`
-- Start command: `npm run start --workspace=server`
+- **Root Directory:** `server`
+- **Build command:** `npm install && npm run build`
+- **Start command:** `npm run start`
+- Alternative (repo root): `npm install && npm run build --workspace=server` / `npm run start --workspace=server`
+- You can also use the included `render.yaml` blueprint.
 - Required env vars:
   - `MONGODB_URI`
   - `JWT_ACCESS_SECRET`

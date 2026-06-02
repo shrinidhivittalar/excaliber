@@ -98,7 +98,7 @@ function versionLabelFromHistory(
       typeof (message as { content?: unknown }).content === "string"
   );
 
-  const lastMessage = userMessages.at(-1);
+  const lastMessage = userMessages[userMessages.length - 1];
   if (!lastMessage) {
     return fallback;
   }

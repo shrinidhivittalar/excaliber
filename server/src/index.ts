@@ -35,7 +35,10 @@ const chatLimiter = rateLimit({
 
 app.use(
   cors({
-    origin: (origin, callback) => {
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void
+    ) => {
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
         return;
