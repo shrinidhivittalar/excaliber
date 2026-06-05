@@ -512,6 +512,12 @@ export function useDrawingApp() {
     [autoSaveDrawing]
   )
 
+  const retryLastMessage = useCallback(() => {
+    const userMessages = messagesRef.current.filter(m => m.role === 'user')
+    const last = userMessages[userMessages.length - 1]
+    if (last) void sendMessage(last.content)
+  }, [sendMessage])
+
   const clearAll = useCallback(async () => {
     try {
       const data = await api.clearCanvas()
@@ -571,6 +577,7 @@ export function useDrawingApp() {
     currentTags,
     isSaving,
     sendMessage,
+    retryLastMessage,
     clearAll,
     saveDrawing,
     shareDrawing,

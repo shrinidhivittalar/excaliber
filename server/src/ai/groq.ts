@@ -12,6 +12,8 @@ import {
   parseElementsJson,
 } from "./scene";
 import { SYSTEM_PROMPT } from "./systemPrompt";
+import { planToExcalidrawElements } from "./layout";
+import type { DiagramPlan } from "./layout/types";
 
 export interface Message {
   role: "user" | "assistant";
@@ -27,6 +29,70 @@ export interface ProcessMessageResult {
 
 const MAX_FUNCTION_ITERATIONS = 10;
 const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+
+const PLAN_DIAGRAM_TOOL: ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'plan_diagram',
+    description: 'Plan a diagram semantically. Server handles all layout and positioning.',
+    parameters: {
+      type: 'object',
+      properties: {
+        layout: {
+          type: 'string',
+          enum: ['flowchart', 'hierarchy', 'circular', 'comparison', 'timeline', 'mindmap', 'freeform'],
+          description: 'Layout algorithm to use',
+        },
+        title: { type: 'string', description: 'Optional diagram title' },
+        nodes: {
+          type: 'array',
+          description: 'All entities to draw. MUST include every mentioned entity.',
+          items: {
+            type: 'object',
+            required: ['id', 'label', 'shape'],
+            properties: {
+              id: { type: 'string' },
+              label: { type: 'string' },
+              shape: { type: 'string', enum: ['rectangle', 'ellipse', 'diamond', 'text'] },
+              size: { type: 'string', enum: ['xs', 'sm', 'md', 'lg', 'xl'] },
+              group: { type: 'string' },
+              sublabel: { type: 'string' },
+              emphasis: { type: 'boolean' },
+            },
+          },
+        },
+        edges: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['from', 'to'],
+            properties: {
+              from: { type: 'string' },
+              to: { type: 'string' },
+              label: { type: 'string' },
+              style: { type: 'string', enum: ['solid', 'dashed', 'dotted'] },
+              bidirectional: { type: 'boolean' },
+            },
+          },
+        },
+        groups: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['id', 'label'],
+            properties: {
+              id: { type: 'string' },
+              label: { type: 'string' },
+              color: { type: 'string' },
+            },
+          },
+        },
+        direction: { type: 'string', enum: ['LR', 'TB'] },
+      },
+      required: ['layout', 'nodes'],
+    },
+  },
+}
 
 const FETCH_IMAGES_TOOL: ChatCompletionTool = {
   type: "function",
@@ -82,7 +148,7 @@ function mcpToolsToGroqTools(): ChatCompletionTool[] {
 }
 
 function getTools(): ChatCompletionTool[] {
-  return [...mcpToolsToGroqTools(), FETCH_IMAGES_TOOL];
+  return [...mcpToolsToGroqTools(), FETCH_IMAGES_TOOL, PLAN_DIAGRAM_TOOL];
 }
 
 function historyToMessages(history: Message[]): ChatCompletionMessageParam[] {
@@ -168,10 +234,45 @@ async function executeToolCall(
     toolName === "create_view" ? coerceElementsArg(args) : args;
 
   console.log("[TOOL]", toolName, normalizedArgs);
-  toolsUsed.push(toolName);
 
   let output: unknown;
   let updatedScene = sceneJson;
+
+  if (toolName === "plan_diagram") {
+    const plan = normalizedArgs as unknown as DiagramPlan
+
+    if (!plan.nodes || plan.nodes.length === 0) {
+      output = { error: 'plan_diagram requires at least one node' }
+      return { output, sceneJson: updatedScene }
+    }
+
+    console.log('[PLAN_DIAGRAM] Layout:', plan.layout, 'Nodes:', plan.nodes.length)
+    toolsUsed.push('plan_diagram')
+
+    try {
+      const elements = planToExcalidrawElements(plan)
+      console.log('[PLAN_DIAGRAM] Generated', elements.length, 'elements')
+
+      const elementsJson = JSON.stringify(elements)
+      const mcpResult = await callMcpTool('create_view', { elements: elementsJson })
+      output = mcpResult
+      toolsUsed.push('create_view')
+
+      const checkpoint = extractCheckpointId(mcpResult)
+      updatedScene = buildSceneFromElements(
+        (elements as unknown[]).filter((el: unknown) => (el as { type?: string }).type !== 'cameraUpdate'),
+        updatedScene,
+        checkpoint
+      )
+    } catch (planError) {
+      console.error('[PLAN_DIAGRAM ERROR]', planError)
+      output = { error: planError instanceof Error ? planError.message : 'Layout failed' }
+    }
+
+    return { output, sceneJson: updatedScene }
+  }
+
+  toolsUsed.push(toolName);
 
   if (toolName === "fetch_images") {
     const query = String(normalizedArgs.query ?? "");

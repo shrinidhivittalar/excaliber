@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import type { Message } from '@/lib/types'
-import { cn, detectDiagramType } from '@/lib/utils'
+import { cn, extractDiagramInfo } from '@/lib/utils'
 
 const MAX_CHARS = 1000
 
@@ -34,6 +34,7 @@ interface ChatPanelProps {
   currentDrawingId: string | null
   showVersionHistory?: boolean
   onToggleVersionHistory?: () => void
+  onRetry?: () => void
 }
 
 function LoadingBubble() {
@@ -51,10 +52,22 @@ function LoadingBubble() {
   )
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+  message,
+  onRetry,
+}: {
+  message: Message
+  onRetry?: () => void
+}) {
   const isUser = message.role === 'user'
   const isError = message.role === 'error'
-  const diagramType = message.role === 'assistant' ? detectDiagramType(message.content) : null
+  const { diagramType, usedPlanDiagram } = message.role === 'assistant'
+    ? extractDiagramInfo(message.content, message.toolsUsed)
+    : { diagramType: null, usedPlanDiagram: false }
+
+  const visibleTools = message.toolsUsed?.filter(
+    t => t !== 'plan_diagram' && t !== 'read_me'
+  ) ?? []
 
   return (
     <div className={cn('flex flex-col gap-1', isUser ? 'items-end' : 'items-start')}>
@@ -69,22 +82,29 @@ function MessageBubble({ message }: { message: Message }) {
         {message.content}
       </div>
 
-      {message.role === 'assistant' && message.toolsUsed && message.toolsUsed.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 px-1">
-          {message.toolsUsed.map((tool) => (
-            <span
-              key={`${message.id}-${tool}`}
-              className="text-[11px] text-white/30"
-            >
+      {message.role === 'assistant' && (diagramType || usedPlanDiagram || visibleTools.length > 0) && (
+        <div className="flex gap-1.5 mt-1.5 flex-wrap px-1">
+          {diagramType && (
+            <span className="text-[10px] bg-white/10 text-white/50 px-2 py-0.5 rounded-full capitalize">
+              {diagramType}
+            </span>
+          )}
+          {visibleTools.map(tool => (
+            <span key={`${message.id}-${tool}`} className="text-[10px] text-white/25">
               {tool}
             </span>
           ))}
         </div>
       )}
-      {diagramType && (
-        <span className="inline-block rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/40">
-          {diagramType}
-        </span>
+
+      {isError && onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="px-1 text-xs text-white/40 hover:text-white/70 transition-colors"
+        >
+          ↩ Try again
+        </button>
       )}
     </div>
   )
@@ -103,6 +123,7 @@ export function ChatPanel({
   currentDrawingId,
   showVersionHistory = false,
   onToggleVersionHistory,
+  onRetry,
 }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const [toast, setToast] = useState<string | null>(null)
@@ -377,7 +398,11 @@ export function ChatPanel({
           ) : (
             <>
               {messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  onRetry={message.role === 'error' ? onRetry : undefined}
+                />
               ))}
               {isLoading && <LoadingBubble />}
             </>

@@ -51,6 +51,7 @@ export default function CanvasPage() {
     currentTags,
     isSaving,
     sendMessage,
+    retryLastMessage,
     clearAll,
     saveDrawing,
     shareDrawing,
@@ -222,6 +223,7 @@ export default function CanvasPage() {
               currentDrawingId={currentDrawingId}
               showVersionHistory={showVersionHistory}
               onToggleVersionHistory={toggleVersionHistory}
+              onRetry={retryLastMessage}
             />
           </>
         )}

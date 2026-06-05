@@ -15,3 +15,14 @@ export function detectDiagramType(reply: string): string | null {
   if (lower.includes('comparison') || lower.includes('versus')) return 'Comparison'
   return null
 }
+
+export function extractDiagramInfo(
+  reply: string,
+  toolsUsed?: string[]
+): { diagramType: string | null; usedPlanDiagram: boolean } {
+  const usedPlanDiagram = toolsUsed?.includes('plan_diagram') ?? false
+  const layouts = ['flowchart', 'hierarchy', 'circular', 'comparison', 'timeline', 'mindmap', 'freeform']
+  const lower = reply.toLowerCase()
+  const diagramType = layouts.find(l => lower.includes(l)) ?? null
+  return { diagramType, usedPlanDiagram }
+}
