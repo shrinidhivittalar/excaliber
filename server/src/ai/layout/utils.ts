@@ -1,11 +1,24 @@
 import type { DiagramNode, DiagramGroup, DiagramEdge, ComputedNode, ComputedEdge, EdgeStyle } from './types'
+import { THEMES, type DiagramTheme, DEFAULT_THEME } from './themes'
 
-// Placeholder — to be implemented in a later stage
 export function assignColors(
-  _nodes: DiagramNode[],
-  _groups?: DiagramGroup[]
+  nodes:   DiagramNode[],
+  groups?: DiagramGroup[],
+  theme:   DiagramTheme = DEFAULT_THEME
 ): Record<string, string> {
-  return {}
+  const palette = THEMES[theme].palette
+  const colorMap: Record<string, string> = {}
+
+  if (groups && groups.length > 0) {
+    groups.forEach((g, i) => {
+      colorMap[g.id] = g.color ?? palette[i % palette.length]
+    })
+  } else {
+    nodes.forEach((n, i) => {
+      colorMap[n.id] = palette[i % palette.length]
+    })
+  }
+  return colorMap
 }
 
 export function buildEdges(edges?: DiagramEdge[]): ComputedEdge[] {

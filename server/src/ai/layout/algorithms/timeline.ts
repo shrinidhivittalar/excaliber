@@ -1,12 +1,13 @@
 import type { DiagramPlan, ComputedLayout, ComputedNode } from '../types'
 import { computeNodeDimensions } from '../sizing'
-import { buildGroups } from '../utils'
+import { assignColors, buildGroups } from '../utils'
 
 const H_GAP = 60
 const MARGIN = 80
 const AXIS_Y = 350
 
 export function layoutTimeline(plan: DiagramPlan): ComputedLayout {
+  const colors = assignColors(plan.nodes, plan.groups, plan.theme)
   const allDims = plan.nodes.map(n => computeNodeDimensions(n.label, n.size, n.shape))
 
   const nodes: ComputedNode[] = plan.nodes.map((node, i) => {
@@ -19,7 +20,7 @@ export function layoutTimeline(plan: DiagramPlan): ComputedLayout {
     return {
       id: node.id, x, y, width, height,
       shape: node.shape, label: node.label, sublabel: node.sublabel,
-      backgroundColor: '#dbeafe',
+      backgroundColor: colors[node.group ?? node.id] ?? 'transparent',
       strokeColor: '#1e1e1e', fontSize, groupId: node.group,
     }
   })

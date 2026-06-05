@@ -13,6 +13,7 @@ const chatBodySchema = z.object({
     })
   ),
   sceneJson: z.record(z.unknown()),
+  theme: z.enum(['minimal', 'default', 'vibrant']).optional().default('default'),
 });
 
 router.post("/", async (req, res) => {
@@ -23,10 +24,10 @@ router.post("/", async (req, res) => {
     return;
   }
 
-  const { message, history, sceneJson } = parsed.data;
+  const { message, history, sceneJson, theme } = parsed.data;
 
   try {
-    const result = await processMessage(message, history, sceneJson);
+    const result = await processMessage(message, history, sceneJson, theme);
     res.json(result);
   } catch (error) {
     const message =

@@ -67,6 +67,31 @@ COMPLETENESS: Every entity the user mentions MUST appear as a node.
   User: "visualize brain" → nodes: cerebrum, cerebellum, brainstem (all three, no exceptions)
   User: "show HTTP methods" → nodes: GET, POST, PUT, DELETE, PATCH (all of them)
 
+REFINEMENT (when [CURRENT CANVAS] block is present):
+  The canvas block shows existing node ids and labels.
+  Use "mode": "merge" — then:
+    KEEP a node: include it in nodes[] with its EXACT id. It stays in place.
+    ADD a node:  give it a new id. The layout engine positions it.
+    REMOVE a node: omit it.
+    ADD a connection to an existing node: reference its id in edges[].
+    REMOVE a connection: omit that edge.
+
+  Example — canvas has id:"api" and id:"db", user says "add Redis between them":
+  {
+    "layout": "flowchart",
+    "mode": "merge",
+    "nodes": [
+      { "id": "api",   "label": "API",         "shape": "rectangle" },
+      { "id": "redis", "label": "Redis Cache",  "shape": "rectangle", "size": "md" },
+      { "id": "db",    "label": "Database",     "shape": "rectangle" }
+    ],
+    "edges": [
+      { "from": "api",   "to": "redis" },
+      { "from": "redis", "to": "db"    }
+    ]
+  }
+  Note: the old api→db edge is simply omitted, which removes it.
+
 NEVER PRODUCE: x, y, width, height, coordinates, pixel values, points arrays.
 The server handles all of that. If you include coordinates, they are ignored and
 may break the layout.

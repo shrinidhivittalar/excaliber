@@ -6,8 +6,13 @@ const LEVEL_GAP = 120
 const SIBLING_GAP = 40
 const MARGIN = 80
 
-export function layoutHierarchy(plan: DiagramPlan): ComputedLayout {
-  const colors = assignColors(plan.nodes, plan.groups)
+type ExistingPositions = Map<string, { x: number; y: number; width: number; height: number }>
+
+export function layoutHierarchy(
+  plan: DiagramPlan,
+  existingPositions: ExistingPositions = new Map()
+): ComputedLayout {
+  const colors = assignColors(plan.nodes, plan.groups, plan.theme)
   const edges = plan.edges ?? []
 
   // Build parent-child map from edges
@@ -58,7 +63,22 @@ export function layoutHierarchy(plan: DiagramPlan): ComputedLayout {
     dims.set(n.id, { w: width, h: height, fontSize })
   })
 
-  // Layout each level
+  // Merge mode: pin existing nodes to their stored positions first
+  levels.forEach((_level, id) => {
+    if (existingPositions.has(id)) {
+      const pos = existingPositions.get(id)!
+      const node = nodeMap.get(id)!
+      const d = dims.get(id)!
+      computed.set(id, {
+        id, x: pos.x, y: pos.y, width: pos.width, height: pos.height,
+        shape: node.shape, label: node.label, sublabel: node.sublabel,
+        backgroundColor: colors[node.group ?? id] ?? 'transparent',
+        strokeColor: '#1e1e1e', fontSize: d.fontSize, groupId: node.group,
+      })
+    }
+  })
+
+  // Layout each level — skip nodes already pinned
   let maxLevelY = 0
   const maxLevels = Math.max(...Array.from(byLevel.keys()))
 
@@ -72,21 +92,16 @@ export function layoutHierarchy(plan: DiagramPlan): ComputedLayout {
     const y = MARGIN + level * (levelHeight + LEVEL_GAP)
 
     levelNodes.forEach(id => {
+      if (computed.has(id)) return   // already pinned by merge mode
+
       const node = nodeMap.get(id)!
       const d = dims.get(id)!
       computed.set(id, {
-        id,
-        x,
-        y,
-        width: d.w,
-        height: d.h,
-        shape: node.shape,
-        label: node.label,
-        sublabel: node.sublabel,
+        id, x, y,
+        width: d.w, height: d.h,
+        shape: node.shape, label: node.label, sublabel: node.sublabel,
         backgroundColor: colors[node.group ?? node.id] ?? 'transparent',
-        strokeColor: '#1e1e1e',
-        fontSize: d.fontSize,
-        groupId: node.group,
+        strokeColor: '#1e1e1e', fontSize: d.fontSize, groupId: node.group,
       })
       x += d.w + SIBLING_GAP
     })

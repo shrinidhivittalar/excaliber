@@ -7,7 +7,7 @@ const ROW_GAP = 20
 const MARGIN = 80
 
 export function layoutComparison(plan: DiagramPlan): ComputedLayout {
-  const colors = assignColors(plan.nodes, plan.groups)
+  const colors = assignColors(plan.nodes, plan.groups, plan.theme)
 
   // Split nodes into two halves (or use groups if defined)
   const groups = plan.groups ?? []

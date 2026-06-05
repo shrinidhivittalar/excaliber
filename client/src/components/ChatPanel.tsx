@@ -10,6 +10,12 @@ import { cn, extractDiagramInfo } from '@/lib/utils'
 
 const MAX_CHARS = 1000
 
+const THEME_OPTIONS = [
+  { id: 'minimal' as const,  dot: '#94a3b8', label: 'Minimal'  },
+  { id: 'default' as const,  dot: '#818cf8', label: 'Default'  },
+  { id: 'vibrant' as const,  dot: '#f59e0b', label: 'Vibrant'  },
+]
+
 const EXAMPLE_PROMPTS = [
   'Show the water cycle',
   'Draw how TCP/IP handshake works',
@@ -35,21 +41,9 @@ interface ChatPanelProps {
   showVersionHistory?: boolean
   onToggleVersionHistory?: () => void
   onRetry?: () => void
-}
-
-function LoadingBubble() {
-  return (
-    <div className="flex justify-start">
-      <div className="rounded-2xl rounded-bl-sm bg-white/10 px-4 py-2.5 text-sm text-white">
-        <span>Drawing</span>
-        <span className="loading-dots ml-0.5 inline-flex">
-          <span className="loading-dot">.</span>
-          <span className="loading-dot">.</span>
-          <span className="loading-dot">.</span>
-        </span>
-      </div>
-    </div>
-  )
+  loadingStage: string
+  theme: 'minimal' | 'default' | 'vibrant'
+  onThemeChange: (t: 'minimal' | 'default' | 'vibrant') => void
 }
 
 function MessageBubble({
@@ -71,15 +65,26 @@ function MessageBubble({
 
   return (
     <div className={cn('flex flex-col gap-1', isUser ? 'items-end' : 'items-start')}>
-      <div
-        className={cn(
-          'max-w-[85%] rounded-2xl px-4 py-2.5 text-sm',
-          isUser && 'rounded-br-sm bg-white text-black',
-          message.role === 'assistant' && 'rounded-bl-sm bg-white/10 text-white',
-          isError && 'rounded-bl-sm bg-red-500/20 text-red-300'
+      <div className="group relative">
+        <div
+          className={cn(
+            'max-w-[85%] rounded-2xl px-4 py-2.5 text-sm',
+            isUser && 'rounded-br-sm bg-white text-black',
+            message.role === 'assistant' && 'rounded-bl-sm bg-white/10 text-white',
+            isError && 'rounded-bl-sm bg-red-500/20 text-red-300'
+          )}
+        >
+          {message.content}
+        </div>
+        {!isUser && onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="absolute -bottom-5 left-0 text-[10px] text-white/25 hover:text-white/60 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+          >
+            ↩ Try again
+          </button>
         )}
-      >
-        {message.content}
       </div>
 
       {message.role === 'assistant' && (diagramType || usedPlanDiagram || visibleTools.length > 0) && (
@@ -95,16 +100,6 @@ function MessageBubble({
             </span>
           ))}
         </div>
-      )}
-
-      {isError && onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
-          className="px-1 text-xs text-white/40 hover:text-white/70 transition-colors"
-        >
-          ↩ Try again
-        </button>
       )}
     </div>
   )
@@ -124,6 +119,9 @@ export function ChatPanel({
   showVersionHistory = false,
   onToggleVersionHistory,
   onRetry,
+  loadingStage,
+  theme,
+  onThemeChange,
 }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const [toast, setToast] = useState<string | null>(null)
@@ -317,6 +315,23 @@ export function ChatPanel({
         </div>
 
         <div className="flex shrink-0 items-center gap-0.5">
+          <div className="flex items-center gap-1.5 mr-1">
+            {THEME_OPTIONS.map(t => (
+              <button
+                key={t.id}
+                title={t.label}
+                onClick={() => onThemeChange(t.id)}
+                className="rounded-full transition-all duration-150"
+                style={{
+                  width:      14,
+                  height:     14,
+                  background: t.dot,
+                  opacity:    theme === t.id ? 1 : 0.3,
+                  transform:  theme === t.id ? 'scale(1.3)' : 'scale(1)',
+                }}
+              />
+            ))}
+          </div>
           <Button
             type="button"
             variant="ghost"
@@ -397,14 +412,38 @@ export function ChatPanel({
             </div>
           ) : (
             <>
-              {messages.map((message) => (
-                <MessageBubble
-                  key={message.id}
-                  message={message}
-                  onRetry={message.role === 'error' ? onRetry : undefined}
-                />
-              ))}
-              {isLoading && <LoadingBubble />}
+              {(() => {
+                const lastInteractiveIdx = messages.reduceRight(
+                  (found, m, i) =>
+                    found === -1 && (m.role === 'assistant' || m.role === 'error') ? i : found,
+                  -1
+                )
+                return messages.map((message, i) => (
+                  <MessageBubble
+                    key={message.id}
+                    message={message}
+                    onRetry={i === lastInteractiveIdx ? onRetry : undefined}
+                  />
+                ))
+              })()}
+              {isLoading && (
+                <div className="flex items-start gap-2.5 mb-3">
+                  <div className="max-w-[85%] rounded-2xl rounded-bl-sm bg-white/10 px-3.5 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white/50 text-[13px]">{loadingStage}</span>
+                      <span className="flex gap-0.5 ml-0.5">
+                        {[0, 1, 2].map(i => (
+                          <span
+                            key={i}
+                            className="w-1 h-1 rounded-full bg-white/40 inline-block"
+                            style={{ animation: `bounce 1.1s ease-in-out ${i * 0.18}s infinite` }}
+                          />
+                        ))}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
           <div ref={bottomRef} />

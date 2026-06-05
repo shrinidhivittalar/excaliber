@@ -120,7 +120,12 @@ export const shareApi = {
 }
 
 // Existing canvas endpoints (keep these)
-export const sendMessage = async (message: string, history: Message[], sceneJson: object) => {
+export const sendMessage = async (
+  message: string,
+  history: Message[],
+  sceneJson: object,
+  theme: 'minimal' | 'default' | 'vibrant' = 'default'
+) => {
   const response = await api.post('/chat', {
     message,
     history: history
@@ -129,12 +134,14 @@ export const sendMessage = async (message: string, history: Message[], sceneJson
       )
       .slice(-20)
       .map(({ role, content }) => ({ role, content })),
-    sceneJson
+    sceneJson,
+    theme,
   })
   return response.data as {
     reply: string
     sceneJson: object
     toolsUsed: string[]
+    stages: string[]
     mermaidDiagram?: string
   }
 }

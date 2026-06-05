@@ -3,7 +3,7 @@ import { computeNodeDimensions } from '../sizing'
 import { assignColors, buildEdges, buildGroups } from '../utils'
 
 export function layoutCircular(plan: DiagramPlan): ComputedLayout {
-  const colors = assignColors(plan.nodes, plan.groups)
+  const colors = assignColors(plan.nodes, plan.groups, plan.theme)
   const N = plan.nodes.length
 
   if (N === 0) return { nodes: [], edges: [], canvasWidth: 800, canvasHeight: 600, groups: [] }

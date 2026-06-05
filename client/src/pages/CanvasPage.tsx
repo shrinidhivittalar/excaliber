@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Excalidraw } from '@excalidraw/excalidraw'
+import { Excalidraw, exportToBlob } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
 import { HelpCircle } from 'lucide-react'
 import { ChatPanel } from '@/components/ChatPanel'
+import { NodePanel } from '@/components/NodePanel'
 import { DrawingInfoBar } from '@/components/DrawingInfoBar'
 import { VersionHistoryPanel } from '@/components/VersionHistoryPanel'
 import {
@@ -68,6 +69,12 @@ export default function CanvasPage() {
     restoreVersion,
     currentVersionNumber,
     versionToast,
+    loadingStage,
+    theme,
+    changeTheme,
+    excalidrawAPIRef,
+    selectedNode,
+    clearSelectedNode,
   } = useDrawingApp()
 
   useEffect(() => {
@@ -145,6 +152,30 @@ export default function CanvasPage() {
     return result?.url ?? null
   }
 
+  const [copied, setCopied] = useState(false)
+
+  async function copyAsPng() {
+    const api = excalidrawAPIRef.current
+    if (!api) return
+    try {
+      const blob = await exportToBlob({
+        elements: api.getSceneElements(),
+        appState: { ...api.getAppState(), exportBackground: true },
+        files:    api.getFiles(),
+        mimeType: 'image/png',
+      })
+      if (!navigator.clipboard?.write) {
+        console.warn('[COPY PNG] clipboard.write API not available (requires HTTPS or localhost)')
+        return
+      }
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch (err) {
+      console.error('[COPY PNG]', err)
+    }
+  }
+
   const showLoadingOverlay = Boolean(drawingIdFromUrl && isCanvasLoading)
 
   return (
@@ -159,6 +190,14 @@ export default function CanvasPage() {
           ← Dashboard
         </Link>
 
+        <button
+          onClick={copyAsPng}
+          title="Copy canvas as PNG"
+          className="absolute left-3 top-8 z-40 flex items-center gap-1.5 text-[11px] text-white/40 hover:text-white/80 bg-black/60 hover:bg-black/80 backdrop-blur-sm border border-white/10 rounded-lg px-2.5 py-1.5 transition-all duration-150"
+        >
+          {copied ? '✓ Copied' : '⬡ Copy PNG'}
+        </button>
+
         <Excalidraw
           key={currentDrawingId ?? drawingIdFromUrl ?? 'new'}
           excalidrawAPI={(api) => setExcalidrawAPI(api)}
@@ -169,6 +208,19 @@ export default function CanvasPage() {
           onChange={(elements, appState) => handleSceneChange(elements, appState)}
           UIOptions={{ canvasActions: { export: {} } }}
         />
+
+        {selectedNode && (
+          <NodePanel
+            node={selectedNode}
+            onExplain={(label) =>
+              sendMessage(`Explain "${label}" in the context of this diagram.`)
+            }
+            onDrillDown={(label) =>
+              sendMessage(`Create a detailed diagram expanding on "${label}".`)
+            }
+            onClose={clearSelectedNode}
+          />
+        )}
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -224,6 +276,9 @@ export default function CanvasPage() {
               showVersionHistory={showVersionHistory}
               onToggleVersionHistory={toggleVersionHistory}
               onRetry={retryLastMessage}
+              loadingStage={loadingStage}
+              theme={theme}
+              onThemeChange={changeTheme}
             />
           </>
         )}

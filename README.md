@@ -145,3 +145,40 @@ If the password contains special characters (`@`, `#`, etc.), URL-encode it in t
 - Output directory: `client/dist`
 - Env var:
   - `VITE_API_URL=https://<your-render-service>.onrender.com/api`
+
+## V5 — Core Quality Overhaul
+
+No new features. The existing core loop brought up to a quality standard
+where you would happily show the output to someone.
+
+### What changed
+
+**Edge routing** — arrows now route around obstacle nodes using a
+border-attachment + obstacle-avoidance algorithm. Straight lines are
+used where they are clear; L-bends and U-bends are chosen automatically
+when the straight path would cross another node.
+
+**Refinement reliability** — the server summarises the current canvas
+before every AI call and injects a compact node/edge list as context.
+The AI references existing node IDs for nodes it wants to keep, assigns
+new IDs for nodes to add, and omits nodes or edges it wants to remove.
+The layout engine pins existing nodes in place and only re-positions
+new additions.
+
+**Node interaction** — clicking any labelled shape on the canvas shows
+a floating panel with two actions. "Explain" sends an explanation request
+to the chat. "Go deeper" asks the AI to expand that node into its own
+full diagram, creating a drill-down workflow.
+
+**Loading narrative** — the loading bubble now shows what the AI is
+doing step by step (planning → routing → placing) rather than a generic
+spinner. Steps are replayed from the server response at 350 ms intervals.
+
+**Visual themes** — three selectable themes via dots in the chat header.
+Minimal: monochrome, thin strokes. Default: the existing V4 palette.
+Vibrant: stronger fills and heavier strokes. Theme is stored in
+localStorage and included in every request.
+
+**Copy as PNG** — a one-click button exports the current canvas as a PNG
+and writes it directly to the clipboard, ready to paste into a document
+or message.

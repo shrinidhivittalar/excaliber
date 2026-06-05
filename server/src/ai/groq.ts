@@ -12,8 +12,10 @@ import {
   parseElementsJson,
 } from "./scene";
 import { SYSTEM_PROMPT } from "./systemPrompt";
-import { planToExcalidrawElements } from "./layout";
+import { planToExcalidrawElements, LayoutError } from "./layout";
 import type { DiagramPlan } from "./layout/types";
+import type { DiagramTheme } from "./layout/themes";
+import { summarizeScene, formatSummaryForPrompt } from "./canvas/summarize";
 
 export interface Message {
   role: "user" | "assistant";
@@ -24,6 +26,7 @@ export interface ProcessMessageResult {
   reply: string;
   sceneJson: object;
   toolsUsed: string[];
+  stages: string[];
   mermaidDiagram?: string;
 }
 
@@ -88,6 +91,13 @@ const PLAN_DIAGRAM_TOOL: ChatCompletionTool = {
           },
         },
         direction: { type: 'string', enum: ['LR', 'TB'] },
+        mode: {
+          type: 'string',
+          enum: ['replace', 'merge'],
+          description:
+            '"merge" when the canvas already has nodes and the user wants to add or change something. ' +
+            '"replace" for a fresh drawing (default).',
+        },
       },
       required: ['layout', 'nodes'],
     },
@@ -228,7 +238,9 @@ async function executeToolCall(
   toolName: string,
   args: Record<string, unknown>,
   sceneJson: object,
-  toolsUsed: string[]
+  toolsUsed: string[],
+  stages: string[],
+  theme: DiagramTheme
 ): Promise<{ output: unknown; sceneJson: object }> {
   const normalizedArgs =
     toolName === "create_view" ? coerceElementsArg(args) : args;
@@ -248,9 +260,18 @@ async function executeToolCall(
 
     console.log('[PLAN_DIAGRAM] Layout:', plan.layout, 'Nodes:', plan.nodes.length)
     toolsUsed.push('plan_diagram')
+    stages.push(
+      `Planning ${plan.layout} diagram — ${plan.nodes.length} node${plan.nodes.length !== 1 ? 's' : ''}...`
+    )
+    if ((plan.edges?.length ?? 0) > 0) {
+      stages.push(`Routing ${plan.edges!.length} connection${plan.edges!.length !== 1 ? 's' : ''}...`)
+    }
 
     try {
-      const elements = planToExcalidrawElements(plan)
+      const currentElements =
+        (sceneJson as Record<string, unknown>).elements as unknown[] | undefined
+      const planWithTheme: DiagramPlan = { ...plan, theme }
+      const elements = planToExcalidrawElements(planWithTheme, currentElements)
       console.log('[PLAN_DIAGRAM] Generated', elements.length, 'elements')
 
       const elementsJson = JSON.stringify(elements)
@@ -265,8 +286,33 @@ async function executeToolCall(
         checkpoint
       )
     } catch (planError) {
-      console.error('[PLAN_DIAGRAM ERROR]', planError)
-      output = { error: planError instanceof Error ? planError.message : 'Layout failed' }
+      const isLayoutError = planError instanceof LayoutError
+      const stage = isLayoutError ? planError.stage : 'unknown'
+      const detail = isLayoutError
+        ? (planError.detail ?? planError.message)
+        : planError instanceof Error ? planError.message : 'Unexpected error'
+
+      console.error('[PLAN_DIAGRAM ERROR]', {
+        stage,
+        detail,
+        layout: plan.layout,
+        nodeCount: plan.nodes?.length ?? 0,
+      })
+
+      const hints: Record<string, string> = {
+        validation: 'The plan structure was invalid. Simplify the diagram or reduce the number of nodes.',
+        layout: 'The layout algorithm failed. Try a different layout type or fewer nodes.',
+        serialization: 'The drawing could not be rendered. Try rephrasing your request.',
+        unknown: 'An unexpected error occurred. Try rephrasing your request.',
+      }
+
+      output = {
+        error: 'plan_diagram failed',
+        stage,
+        detail,
+        planSummary: { layout: plan.layout, nodeCount: plan.nodes?.length ?? 0 },
+        hint: hints[stage] ?? hints.unknown,
+      }
     }
 
     return { output, sceneJson: updatedScene }
@@ -312,13 +358,16 @@ async function executeToolCall(
 export async function processMessage(
   userMessage: string,
   history: Message[],
-  currentSceneJson: object
+  currentSceneJson: object,
+  theme: DiagramTheme = 'default'
 ): Promise<ProcessMessageResult> {
   if (!process.env.GROQ_API_KEY) {
     throw new Error("AI service error");
   }
 
   const toolsUsed: string[] = [];
+  const stages: string[] = []
+  stages.push('Reading your request...')
   let sceneJson = currentSceneJson;
   const model = process.env.GROQ_MODEL ?? DEFAULT_MODEL;
 
@@ -333,7 +382,15 @@ export async function processMessage(
     const checkpointHint = checkpointId
       ? ` Checkpoint ID for restoreCheckpoint: ${checkpointId}.`
       : "";
-    const initialPrompt = `${userMessage}\n\nCurrent canvas state: ${elementCount} elements.${checkpointHint}`;
+
+    const canvasSummary = summarizeScene(currentSceneJson as Record<string, unknown>)
+    const contextBlock  = formatSummaryForPrompt(canvasSummary)
+
+    const enrichedUserMessage = canvasSummary.isEmpty
+      ? userMessage
+      : `${userMessage}\n\n[CURRENT CANVAS]\n${contextBlock}`
+
+    const initialPrompt = `${enrichedUserMessage}\n\nCurrent canvas state: ${elementCount} elements.${checkpointHint}`;
 
     const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: SYSTEM_PROMPT },
@@ -392,7 +449,9 @@ export async function processMessage(
             toolName,
             args,
             sceneJson,
-            toolsUsed
+            toolsUsed,
+            stages,
+            theme
           );
         } catch (toolError) {
           const message =
@@ -416,6 +475,8 @@ export async function processMessage(
       iterations += 1;
     }
 
+    stages.push('Placing on canvas...')
+
     const mermaidMatch = reply.match(/```mermaid\n([\s\S]+?)\n```/);
     if (mermaidMatch) {
       const mermaidCode = mermaidMatch[1];
@@ -428,6 +489,7 @@ export async function processMessage(
           sceneJson
         ),
         toolsUsed,
+        stages,
         mermaidDiagram: mermaidCode,
       };
     }
@@ -439,6 +501,7 @@ export async function processMessage(
         sceneJson
       ),
       toolsUsed,
+      stages,
     };
   } catch (error) {
     console.error("Groq error:", error);

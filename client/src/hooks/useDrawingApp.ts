@@ -6,6 +6,7 @@ import * as api from '@/lib/api'
 import { drawingsApi, foldersApi, versionsApi } from '@/lib/api'
 import { sanitizeAppState, sanitizeScene, prepareElementsForCanvas } from '@/lib/scene'
 import type { DrawingFull, Folder, Message, VersionMeta } from '@/lib/types'
+import type { SelectedNode } from '../components/NodePanel'
 
 const STORAGE_KEYS = {
   messages: 'ai-drawing-messages',
@@ -136,6 +137,10 @@ export function useDrawingApp() {
   const [messages, setMessages] = useState<Message[]>([])
   const [sceneJson, setSceneJson] = useState<object>(EMPTY_SCENE)
   const [isLoading, setIsLoading] = useState(false)
+  const [loadingStage, setLoadingStage] = useState<string>('Thinking...')
+  const [theme, setTheme] = useState<'minimal' | 'default' | 'vibrant'>(() => {
+    return (localStorage.getItem('ai-drawing-theme') as 'minimal' | 'default' | 'vibrant') ?? 'default'
+  })
   const [isCanvasLoading, setIsCanvasLoading] = useState(false)
   const [currentDrawingId, setCurrentDrawingId] = useState<string | null>(null)
   const [currentTitle, setCurrentTitle] = useState('Untitled Drawing')
@@ -147,6 +152,9 @@ export function useDrawingApp() {
   const [versions, setVersions] = useState<VersionMeta[]>([])
   const [versionsLoading, setVersionsLoading] = useState(false)
   const [versionToast, setVersionToast] = useState<string | null>(null)
+  const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null)
+
+  const themeRef = useRef(theme)
 
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null)
   const sceneDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -182,6 +190,10 @@ export function useDrawingApp() {
   useEffect(() => {
     currentTagsRef.current = currentTags
   }, [currentTags])
+
+  useEffect(() => {
+    themeRef.current = theme
+  }, [theme])
 
   const loadVersions = useCallback(async (drawingId?: string) => {
     const id = drawingId ?? currentDrawingIdRef.current
@@ -454,7 +466,16 @@ export function useDrawingApp() {
       saveToStorage(nextMessages, sceneJsonRef.current)
 
       try {
-        const data = await api.sendMessage(trimmed, nextMessages, sceneJsonRef.current)
+        const data = await api.sendMessage(trimmed, nextMessages, sceneJsonRef.current, themeRef.current)
+
+        if (data.stages?.length) {
+          for (const stage of data.stages) {
+            setLoadingStage(stage)
+            await new Promise<void>(r => setTimeout(r, 350))
+          }
+        }
+        setLoadingStage('Thinking...')
+
         const assistantMessage = createMessage('assistant', data.reply, data.toolsUsed)
         const updatedMessages = [...nextMessages, assistantMessage]
 
@@ -512,6 +533,11 @@ export function useDrawingApp() {
     [autoSaveDrawing]
   )
 
+  function changeTheme(t: 'minimal' | 'default' | 'vibrant') {
+    setTheme(t)
+    localStorage.setItem('ai-drawing-theme', t)
+  }
+
   const retryLastMessage = useCallback(() => {
     const userMessages = messagesRef.current.filter(m => m.role === 'user')
     const last = userMessages[userMessages.length - 1]
@@ -536,8 +562,49 @@ export function useDrawingApp() {
     }
   }, [])
 
+  function canvasToScreen(
+    canvasX: number,
+    canvasY: number,
+    nodeWidth: number,
+    appState: { scrollX: number; scrollY: number; zoom: { value: number } }
+  ): { screenX: number; screenY: number } {
+    const z = appState.zoom.value
+    return {
+      screenX: Math.round((canvasX + nodeWidth / 2 + appState.scrollX) * z),
+      screenY: Math.round((canvasY + appState.scrollY) * z),
+    }
+  }
+
   const handleSceneChange = useCallback(
     (elements: readonly unknown[], appState: AppState) => {
+      const selectedIds = Object.keys(
+        (appState as Record<string, unknown>).selectedElementIds as Record<string, boolean> ?? {}
+      )
+
+      if (selectedIds.length === 1) {
+        const el = (elements as Record<string, unknown>[])
+          .find(e => e.id === selectedIds[0])
+
+        if (
+          el &&
+          ['rectangle', 'ellipse', 'diamond'].includes(el.type as string) &&
+          (el.label as Record<string, unknown>)?.text
+        ) {
+          const label = (el.label as Record<string, unknown>).text as string
+          const { screenX, screenY } = canvasToScreen(
+            el.x as number,
+            el.y as number,
+            el.width as number,
+            appState as { scrollX: number; scrollY: number; zoom: { value: number } }
+          )
+          setSelectedNode({ id: el.id as string, label, screenX, screenY })
+        } else {
+          setSelectedNode(null)
+        }
+      } else {
+        setSelectedNode(null)
+      }
+
       if (sceneDebounceRef.current) {
         clearTimeout(sceneDebounceRef.current)
       }
@@ -578,6 +645,11 @@ export function useDrawingApp() {
     isSaving,
     sendMessage,
     retryLastMessage,
+    loadingStage,
+    theme,
+    changeTheme,
+    selectedNode,
+    clearSelectedNode: () => setSelectedNode(null),
     clearAll,
     saveDrawing,
     shareDrawing,
@@ -585,6 +657,7 @@ export function useDrawingApp() {
     resetFreshCanvas,
     importLocalStorageDraft,
     setCurrentTitle,
+    excalidrawAPIRef,
     setExcalidrawAPI,
     handleSceneChange,
     showVersionHistory,

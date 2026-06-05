@@ -1,3 +1,5 @@
+import type { DiagramTheme } from './themes'
+
 export type LayoutType =
   | 'flowchart'
   | 'hierarchy'
@@ -42,8 +44,10 @@ export interface DiagramPlan {
   title?: string
   nodes: DiagramNode[]
   edges?: DiagramEdge[]
+  mode?: 'replace' | 'merge'   // 'replace' = full re-layout (default), 'merge' = keep existing positions
   groups?: DiagramGroup[]
   direction?: 'LR' | 'TB'   // left-right or top-bottom (for flowchart/hierarchy)
+  theme?: DiagramTheme
 }
 
 // What the layout engine produces — ready for Excalidraw

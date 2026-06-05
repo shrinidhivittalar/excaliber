@@ -3,7 +3,7 @@ import { computeNodeDimensions } from '../sizing'
 import { assignColors, buildEdges, buildGroups } from '../utils'
 
 export function layoutMindmap(plan: DiagramPlan): ComputedLayout {
-  const colors = assignColors(plan.nodes, plan.groups)
+  const colors = assignColors(plan.nodes, plan.groups, plan.theme)
   const edges = plan.edges ?? []
 
   // First node is always the central concept
@@ -27,7 +27,7 @@ export function layoutMindmap(plan: DiagramPlan): ComputedLayout {
     shape: central.shape,
     label: central.label,
     sublabel: central.sublabel,
-    backgroundColor: '#fef9c3',
+    backgroundColor: colors[central.group ?? central.id] ?? 'transparent',
     strokeColor: '#1e1e1e',
     fontSize: centralDim.fontSize,
     groupId: central.group,
