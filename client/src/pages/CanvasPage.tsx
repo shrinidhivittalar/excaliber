@@ -3,7 +3,10 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Excalidraw, exportToBlob } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
 import { HelpCircle } from 'lucide-react'
-import { ChatPanel } from '@/components/ChatPanel'
+import { CanvasTitle }    from '@/components/CanvasTitle'
+import { CanvasActions }  from '@/components/CanvasActions'
+import { HistoryDrawer }  from '@/components/HistoryDrawer'
+import { CommandBar } from '@/components/CommandBar'
 import { NodePanel } from '@/components/NodePanel'
 import { DrawingInfoBar } from '@/components/DrawingInfoBar'
 import { VersionHistoryPanel } from '@/components/VersionHistoryPanel'
@@ -42,24 +45,23 @@ export default function CanvasPage() {
   const migrationCheckedRef = useRef(false)
 
   const {
-    messages,
     sceneJson,
-    isLoading,
     isCanvasLoading,
     currentDrawingId,
     currentTitle,
     currentFolderName,
     currentTags,
-    isSaving,
     sendMessage,
-    retryLastMessage,
-    clearAll,
+    isLoading,
+    loadingStage,
+    messages,
+    isSaving,
     saveDrawing,
     shareDrawing,
+    setCurrentTitle,
     loadDrawing,
     resetFreshCanvas,
     importLocalStorageDraft,
-    setCurrentTitle,
     setExcalidrawAPI,
     handleSceneChange,
     showVersionHistory,
@@ -69,9 +71,6 @@ export default function CanvasPage() {
     restoreVersion,
     currentVersionNumber,
     versionToast,
-    loadingStage,
-    theme,
-    changeTheme,
     excalidrawAPIRef,
     selectedNode,
     clearSelectedNode,
@@ -126,33 +125,19 @@ export default function CanvasPage() {
     appState?: Record<string, unknown>
   }
 
-  const handleSave = async (options?: {
-    title?: string
-    folderId?: string | null
-    tags?: string[]
-  }) => {
-    const newId = await saveDrawing(options)
-    if (newId && !drawingIdFromUrl) {
-      navigate(`/drawing/${newId}`, { replace: true })
-    }
-  }
+  const [copied, setCopied]           = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
-  const handleTitleChange = async (title: string) => {
-    setCurrentTitle(title)
-    if (currentDrawingId) {
-      await saveDrawing({ title })
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault()
+        void saveDrawing()
+      }
     }
-  }
-
-  const handleShare = async () => {
-    const result = await shareDrawing()
-    if (result && !drawingIdFromUrl) {
-      navigate(`/drawing/${result.drawingId}`, { replace: true })
-    }
-    return result?.url ?? null
-  }
-
-  const [copied, setCopied] = useState(false)
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [saveDrawing])
 
   async function copyAsPng() {
     const api = excalidrawAPIRef.current
@@ -180,12 +165,55 @@ export default function CanvasPage() {
 
   return (
     <TooltipProvider>
-      <div className="relative h-screen w-screen overflow-hidden bg-white">
+      <div className="w-screen h-screen overflow-hidden relative">
         {showLoadingOverlay && <CanvasLoadingOverlay />}
+
+        <div className="absolute inset-0">
+          <style>{`
+            .excalidraw .App-top-bar,
+            .excalidraw header,
+            .excalidraw .layer-ui__wrapper__top-left { display: none !important; }
+          `}</style>
+          <Excalidraw
+            key={currentDrawingId ?? drawingIdFromUrl ?? 'new'}
+            excalidrawAPI={(api) => setExcalidrawAPI(api)}
+            initialData={{
+              elements: (scene.elements ?? []) as never[],
+              appState: sanitizeAppState(scene.appState),
+            }}
+            onChange={(elements, appState) => handleSceneChange(elements, appState)}
+            UIOptions={{
+              canvasActions: {
+                export: false,
+                saveAsImage: false,
+                loadScene: false,
+                clearCanvas: false,
+                changeViewBackgroundColor: false,
+                toggleTheme: false,
+              },
+            }}
+          />
+        </div>
+
+        <CanvasTitle
+          title={currentTitle || 'Untitled Drawing'}
+          onSave={(t) => { setCurrentTitle(t); void saveDrawing({ title: t }) }}
+        />
+
+        {(() => { console.log('[CanvasActions props]', { isSaving, currentDrawingId, saveDrawing, shareDrawing }); return null })()}
+        <CanvasActions
+          onSave={() => void saveDrawing()}
+          onShare={() => void shareDrawing()}
+          isSaving={isSaving}
+          currentDrawingId={currentDrawingId}
+          showHistoryToggle={messages.length > 0}
+          historyOpen={historyOpen}
+          onHistoryToggle={() => setHistoryOpen(v => !v)}
+        />
 
         <Link
           to="/dashboard"
-          className="absolute left-3 top-3 z-40 text-xs text-black/30 transition-colors hover:text-black/50"
+          className="fixed top-4 left-4 z-40 text-xs text-white/35 hover:text-white/60 transition-colors bg-black/50 border border-white/8 rounded-lg px-2.5 py-1.5 backdrop-blur-sm"
         >
           ← Dashboard
         </Link>
@@ -193,20 +221,22 @@ export default function CanvasPage() {
         <button
           onClick={copyAsPng}
           title="Copy canvas as PNG"
-          className="absolute left-3 top-8 z-40 flex items-center gap-1.5 text-[11px] text-white/40 hover:text-white/80 bg-black/60 hover:bg-black/80 backdrop-blur-sm border border-white/10 rounded-lg px-2.5 py-1.5 transition-all duration-150"
+          className="absolute left-3 top-10 z-40 flex items-center gap-1.5 text-[11px] text-white/40 hover:text-white/80 bg-black/60 hover:bg-black/80 backdrop-blur-sm border border-white/10 rounded-lg px-2.5 py-1.5 transition-all duration-150"
+          style={{ position: 'absolute', top: '2.5rem', left: '0.75rem', zIndex: 40 }}
         >
           {copied ? '✓ Copied' : '⬡ Copy PNG'}
         </button>
 
-        <Excalidraw
-          key={currentDrawingId ?? drawingIdFromUrl ?? 'new'}
-          excalidrawAPI={(api) => setExcalidrawAPI(api)}
-          initialData={{
-            elements: (scene.elements ?? []) as never[],
-            appState: sanitizeAppState(scene.appState),
-          }}
-          onChange={(elements, appState) => handleSceneChange(elements, appState)}
-          UIOptions={{ canvasActions: { export: {} } }}
+        <HistoryDrawer
+          messages={messages}
+          isOpen={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+        />
+
+        <CommandBar
+          isLoading={isLoading}
+          loadingStage={loadingStage}
+          onSubmit={sendMessage}
         />
 
         {selectedNode && (
@@ -257,29 +287,10 @@ export default function CanvasPage() {
             />
 
             {versionToast && (
-              <div className="fixed bottom-24 right-[400px] z-[60] rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-xs text-emerald-200 shadow-lg">
+              <div className="fixed bottom-24 right-4 z-[60] rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-xs text-emerald-200 shadow-lg">
                 {versionToast}
               </div>
             )}
-
-            <ChatPanel
-              messages={messages}
-              isLoading={isLoading}
-              onSendMessage={sendMessage}
-              onClear={clearAll}
-              onSave={handleSave}
-              onShare={handleShare}
-              isSaving={isSaving}
-              currentTitle={currentTitle}
-              onTitleChange={handleTitleChange}
-              currentDrawingId={currentDrawingId}
-              showVersionHistory={showVersionHistory}
-              onToggleVersionHistory={toggleVersionHistory}
-              onRetry={retryLastMessage}
-              loadingStage={loadingStage}
-              theme={theme}
-              onThemeChange={changeTheme}
-            />
           </>
         )}
       </div>

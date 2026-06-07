@@ -80,7 +80,7 @@ export const authApi = {
 export const drawingsApi = {
   list: () => api.get('/drawings'),
   get: (id: string) => api.get(`/drawings/${id}`),
-  create: (data: { title?: string; sceneJson: object; conversationHistory?: object[] }) =>
+  create: (data: { title?: string; sceneJson: object; conversationHistory?: object[]; thumbnail?: string | null }) =>
     api.post('/drawings', data),
   update: (
     id: string,
@@ -90,6 +90,7 @@ export const drawingsApi = {
       conversationHistory?: object[]
       folderId?: string | null
       tags?: string[]
+      thumbnail?: string | null
     }
   ) => api.put(`/drawings/${id}`, data),
   delete: (id: string) => api.delete(`/drawings/${id}`),

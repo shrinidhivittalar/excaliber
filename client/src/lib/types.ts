@@ -27,6 +27,7 @@ export interface DrawingMeta {
   shareId?: string
   folderId?: string | null
   tags: string[]
+  thumbnail?: string | null
 }
 
 export interface DrawingFull extends DrawingMeta {

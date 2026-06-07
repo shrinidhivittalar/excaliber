@@ -116,7 +116,7 @@ router.get("/", async (req: AuthRequest, res) => {
   const q = typeof req.query.q === "string" ? req.query.q.trim() : undefined;
   const baseFilter = buildListFilter(userId, req.query, { skipSearch: true });
   const select =
-    "_id title updatedAt createdAt isPublic shareId folderId tags";
+    "_id title updatedAt createdAt isPublic shareId folderId tags thumbnail";
 
   let drawings;
 
@@ -166,7 +166,7 @@ router.get("/:id", async (req: AuthRequest, res) => {
 });
 
 router.post("/", async (req: AuthRequest, res) => {
-  const { title, sceneJson, conversationHistory } = req.body;
+  const { title, sceneJson, conversationHistory, thumbnail } = req.body;
 
   if (sceneJson === undefined || sceneJson === null) {
     res.status(400).json({ error: "sceneJson is required" });
@@ -192,6 +192,7 @@ router.post("/", async (req: AuthRequest, res) => {
     userId: req.userId,
     ...(tags !== null ? { tags } : {}),
     ...(folderId !== undefined ? { folderId } : {}),
+    ...(thumbnail !== undefined ? { thumbnail } : {}),
   });
 
   await createVersion(
@@ -212,14 +213,13 @@ router.put("/:id", async (req: AuthRequest, res) => {
     return;
   }
 
-  const { title, sceneJson, conversationHistory } = req.body;
+  const { title, sceneJson, conversationHistory, thumbnail } = req.body;
   const updates: Record<string, unknown> = {};
 
-  if (title !== undefined) updates.title = title;
-  if (sceneJson !== undefined) updates.sceneJson = sceneJson;
-  if (conversationHistory !== undefined) {
-    updates.conversationHistory = conversationHistory;
-  }
+  if (title !== undefined)               updates.title               = title;
+  if (sceneJson !== undefined)           updates.sceneJson           = sceneJson;
+  if (conversationHistory !== undefined) updates.conversationHistory = conversationHistory;
+  if (thumbnail !== undefined)           updates.thumbnail           = thumbnail;
 
   if (req.body.folderId !== undefined) {
     const folderId = await resolveFolderId(req.body.folderId, req.userId!);

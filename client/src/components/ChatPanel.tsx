@@ -282,7 +282,7 @@ export function ChatPanel({
       <header className="flex shrink-0 items-start justify-between gap-2 border-b border-white/10 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-medium text-white">✦ AI Drawing Engine</h2>
+            <h2 className="text-sm font-medium text-white">✦ Excaliber</h2>
             {saveSucceeded && (
               <span className="text-[10px] font-medium text-emerald-400">Saved ✓</span>
             )}

@@ -77,7 +77,7 @@ export default function AuthPage() {
       <div className="w-full max-w-[400px] rounded-xl border border-white/10 bg-zinc-950 p-6 shadow-xl">
         <header className="mb-6 text-center">
           <h1 className="text-xl font-semibold tracking-tight text-white">
-            ✦ AI Drawing Engine
+            ✦ Excaliber
           </h1>
           <p className="mt-2 text-sm text-zinc-400">
             Sign in to save your drawings

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppState, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
+import { exportToBlob } from '@excalidraw/excalidraw'
 import { parseMermaidToExcalidraw } from '@excalidraw/mermaid-to-excalidraw'
 import axios from 'axios'
 import * as api from '@/lib/api'
@@ -349,6 +350,31 @@ export function useDrawingApp() {
     applySceneToCanvas(excalidrawAPIRef.current, EMPTY_SCENE)
   }, [])
 
+  async function generateThumbnail(): Promise<string | null> {
+    const api = excalidrawAPIRef.current
+    if (!api) return null
+    const elements = api.getSceneElements()
+    if (elements.length === 0) return null
+
+    try {
+      const blob = await exportToBlob({
+        elements,
+        appState:         { exportBackground: true, viewBackgroundColor: '#ffffff' } as AppState,
+        files:            api.getFiles(),
+        maxWidthOrHeight: 400,
+        quality:          0.65,
+      })
+      return new Promise(resolve => {
+        const reader = new FileReader()
+        reader.onload  = () => resolve(reader.result as string)
+        reader.onerror = () => resolve(null)
+        reader.readAsDataURL(blob)
+      })
+    } catch {
+      return null
+    }
+  }
+
   const saveDrawing = useCallback(
     async (options?: SaveDrawingOptions): Promise<string | null> => {
       const nextTitle = options?.title ?? currentTitleRef.current
@@ -361,12 +387,14 @@ export function useDrawingApp() {
 
       if (!silent) setIsSaving(true)
       try {
+        const thumbnail = await generateThumbnail()
         const payload = {
           title: nextTitle,
           sceneJson: sceneJsonRef.current,
           conversationHistory: messagesRef.current,
           folderId: nextFolderId,
           tags: nextTags,
+          thumbnail,
         }
 
         if (currentDrawingIdRef.current) {

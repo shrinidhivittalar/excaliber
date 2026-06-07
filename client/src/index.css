@@ -171,3 +171,18 @@
 .chat-panel-enter {
   animation: chat-panel-enter 300ms ease-out;
 }
+
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up { animation: slideUp 0.15s ease-out; }
+
+/* Excalidraw native filename/title sweep */
+.excalidraw .App-top-bar { display: none !important; }
+.excalidraw [class*="filename"] { display: none !important; }
+.excalidraw [class*="title"] { display: none !important; }
+.excalidraw .zen-mode-transition.App-menu_top { display: none !important; }

@@ -44,6 +44,10 @@ const drawingSchema = new mongoose.Schema({
       message: 'Maximum 10 tags per drawing',
     },
   },
+  thumbnail: {
+    type:    String,
+    default: null,
+  },
 }, {
   timestamps: true,
 })
