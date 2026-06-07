@@ -3,6 +3,9 @@ import path from "path";
 
 dotenv.config({ path: path.join(__dirname, "..", ".env") });
 
+import { validateEnv } from './lib/validateEnv'
+validateEnv()
+
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";

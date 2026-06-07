@@ -18,6 +18,8 @@ import { planToExcalidrawElements, LayoutError } from "./layout";
 import type { DiagramPlan } from "./layout/types";
 import type { DiagramTheme } from "./layout/themes";
 import { summarizeScene, formatSummaryForPrompt } from "./canvas/summarize";
+import { recordUsage } from "../services/tokenBudget";
+import { trimHistory } from "./history";
 
 export interface Message {
   role: "user" | "assistant";
@@ -398,15 +400,18 @@ export async function processMessage(
 
     const initialPrompt = `${enrichedUserMessage}\n\nCurrent canvas state: ${elementCount} elements.${checkpointHint}`;
 
+    const trimmedHistory = trimHistory(history)
     const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: SYSTEM_PROMPT },
-      ...historyToMessages(history),
+      ...historyToMessages(trimmedHistory),
       { role: "user", content: initialPrompt },
     ];
 
     const tools = getTools();
     let reply = "";
     let iterations = 0;
+    let totalInputTokens  = 0
+    let totalOutputTokens = 0
 
     while (iterations < MAX_FUNCTION_ITERATIONS) {
       const response = await withRetry(
@@ -433,6 +438,11 @@ export async function processMessage(
           },
         }
       );
+
+      if (response.usage) {
+        totalInputTokens  += response.usage.prompt_tokens
+        totalOutputTokens += response.usage.completion_tokens
+      }
 
       const assistantMessage = response.choices[0]?.message;
       if (!assistantMessage) {
@@ -501,6 +511,18 @@ export async function processMessage(
     }
 
     stages.push('Placing on canvas...')
+
+    const totalTokens = totalInputTokens + totalOutputTokens
+    if (totalTokens > 0) {
+      logger.info('groq_tokens', {
+        requestId,
+        userId,
+        inputTokens:  totalInputTokens,
+        outputTokens: totalOutputTokens,
+        totalTokens,
+      })
+      if (userId) recordUsage(userId, totalTokens)
+    }
 
     const mermaidMatch = reply.match(/```mermaid\n([\s\S]+?)\n```/);
     if (mermaidMatch) {

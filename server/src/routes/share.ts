@@ -9,7 +9,7 @@ router.get("/:shareId", async (req, res) => {
     : req.params.shareId;
 
   const drawing = await Drawing.findOne({ shareId, isPublic: true })
-    .select("title sceneJson")
+    .select('title sceneJson -_id')
     .lean();
 
   if (!drawing) {

@@ -182,3 +182,36 @@ localStorage and included in every request.
 **Copy as PNG** — a one-click button exports the current canvas as a PNG
 and writes it directly to the clipboard, ready to paste into a document
 or message.
+
+## V6 — Production Hardening
+
+### Error handling
+Every request has a unique ID (X-Request-Id header) that appears in every
+log line for that request. All console.log calls in the AI layer are
+replaced with structured JSON logging compatible with log aggregators.
+Groq calls retry up to 3 times with exponential backoff on rate limits and
+transient failures. A 25-second timeout per Groq attempt and a 30-second
+hard timeout on the full request prevent hanging connections. HTTP error
+codes from the server map to specific user-facing messages in the client.
+A React error boundary prevents canvas crashes from white-screening the app.
+
+### Security
+Per-user rate limiting (10 requests per minute by default, configurable
+via USER_RATE_LIMIT_COUNT and USER_RATE_LIMIT_MS env vars) prevents any
+single authenticated user from draining Groq quota. The chat endpoint zod
+schema enforces a 2000-character message limit, strips null bytes, and caps
+history depth. Share link responses use a field whitelist projection so
+internal fields like userId and conversationHistory are never returned.
+
+### Cost control
+Token usage (input + output) is logged per request and accumulated per user
+per day. Requests from users who exceed DAILY_TOKEN_LIMIT (default 100,000)
+are rejected before calling Groq. Conversation history is trimmed to the
+first message plus the last 6 exchanges before each request, reducing token
+consumption on long sessions. The system prompt is passed as a static system
+field (not a messages entry) so Groq can cache it across requests.
+
+### New environment variables
+  USER_RATE_LIMIT_COUNT=10      # max requests per user per window
+  USER_RATE_LIMIT_MS=60000      # window duration in milliseconds
+  DAILY_TOKEN_LIMIT=100000      # max tokens per user per day
