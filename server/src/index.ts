@@ -7,6 +7,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
+import { requestIdMiddleware } from "./middleware/requestId";
 import { connectDB } from "./db/connect";
 import { initMcp } from "./mcp/client";
 import chatRoutes from "./routes/chat";
@@ -45,6 +46,7 @@ const chatLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+app.use(requestIdMiddleware);
 app.use(
   cors({
     origin: (

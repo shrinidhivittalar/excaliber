@@ -5,6 +5,8 @@ import type {
 } from "groq-sdk/resources/chat/completions";
 import { callMcpTool, listMcpTools } from "../mcp/client";
 import { searchImages } from "../services/images";
+import { logger } from "../lib/logger";
+import { withRetry, withTimeout } from "../lib/retry";
 import {
   buildSceneFromElements,
   coerceElementsArg,
@@ -240,12 +242,14 @@ async function executeToolCall(
   sceneJson: object,
   toolsUsed: string[],
   stages: string[],
-  theme: DiagramTheme
+  theme: DiagramTheme,
+  requestId?: string,
+  userId?: string,
 ): Promise<{ output: unknown; sceneJson: object }> {
   const normalizedArgs =
     toolName === "create_view" ? coerceElementsArg(args) : args;
 
-  console.log("[TOOL]", toolName, normalizedArgs);
+  logger.info('tool_call', { requestId, toolName, userId });
 
   let output: unknown;
   let updatedScene = sceneJson;
@@ -258,7 +262,7 @@ async function executeToolCall(
       return { output, sceneJson: updatedScene }
     }
 
-    console.log('[PLAN_DIAGRAM] Layout:', plan.layout, 'Nodes:', plan.nodes.length)
+    logger.info('plan_diagram', { requestId, userId, layout: plan.layout, nodeCount: plan.nodes.length })
     toolsUsed.push('plan_diagram')
     stages.push(
       `Planning ${plan.layout} diagram — ${plan.nodes.length} node${plan.nodes.length !== 1 ? 's' : ''}...`
@@ -272,7 +276,7 @@ async function executeToolCall(
         (sceneJson as Record<string, unknown>).elements as unknown[] | undefined
       const planWithTheme: DiagramPlan = { ...plan, theme }
       const elements = planToExcalidrawElements(planWithTheme, currentElements)
-      console.log('[PLAN_DIAGRAM] Generated', elements.length, 'elements')
+      logger.info('plan_diagram_elements', { requestId, userId, nodeCount: elements.length })
 
       const elementsJson = JSON.stringify(elements)
       const mcpResult = await callMcpTool('create_view', { elements: elementsJson })
@@ -292,11 +296,13 @@ async function executeToolCall(
         ? (planError.detail ?? planError.message)
         : planError instanceof Error ? planError.message : 'Unexpected error'
 
-      console.error('[PLAN_DIAGRAM ERROR]', {
-        stage,
-        detail,
+      logger.error('plan_diagram_error', {
+        requestId,
+        userId,
+        message: detail,
         layout: plan.layout,
         nodeCount: plan.nodes?.length ?? 0,
+        stage,
       })
 
       const hints: Record<string, string> = {
@@ -328,9 +334,7 @@ async function executeToolCall(
         : 3;
     output = await searchImages(query, count);
     const imageResults = Array.isArray(output) ? output : [];
-    console.log(
-      `[IMAGES] Fetched ${imageResults.length} images for query: ${query}`
-    );
+    logger.info('images_fetched', { requestId, userId, count: imageResults.length, query });
   } else {
     output = await callMcpTool(toolName, normalizedArgs);
 
@@ -359,7 +363,9 @@ export async function processMessage(
   userMessage: string,
   history: Message[],
   currentSceneJson: object,
-  theme: DiagramTheme = 'default'
+  theme: DiagramTheme = 'default',
+  requestId?: string,
+  userId?: string,
 ): Promise<ProcessMessageResult> {
   if (!process.env.GROQ_API_KEY) {
     throw new Error("AI service error");
@@ -403,13 +409,30 @@ export async function processMessage(
     let iterations = 0;
 
     while (iterations < MAX_FUNCTION_ITERATIONS) {
-      const response = await getGroq().chat.completions.create({
-        model,
-        messages,
-        tools,
-        tool_choice: "auto",
-        temperature: 0.7,
-      });
+      const response = await withRetry(
+        () => withTimeout(
+          () => getGroq().chat.completions.create({
+            model,
+            messages,
+            tools,
+            tool_choice: "auto",
+            temperature: 0.7,
+          }),
+          25_000,
+          'groq_completion'
+        ),
+        {
+          maxAttempts: 3,
+          baseDelayMs: 1_000,
+          shouldRetry: (err) => {
+            if (err instanceof Error) {
+              const msg = err.message.toLowerCase()
+              return msg.includes('rate') || msg.includes('timeout') || msg.includes('503')
+            }
+            return false
+          },
+        }
+      );
 
       const assistantMessage = response.choices[0]?.message;
       if (!assistantMessage) {
@@ -451,12 +474,14 @@ export async function processMessage(
             sceneJson,
             toolsUsed,
             stages,
-            theme
+            theme,
+            requestId,
+            userId,
           );
         } catch (toolError) {
           const message =
             toolError instanceof Error ? toolError.message : "Tool failed";
-          console.error("[TOOL ERROR]", toolName, message);
+          logger.error('tool_error', { requestId, userId, toolName, message });
           result = {
             output: { error: message },
             sceneJson,
@@ -504,7 +529,11 @@ export async function processMessage(
       stages,
     };
   } catch (error) {
-    console.error("Groq error:", error);
+    logger.error('groq_error', {
+      requestId,
+      userId,
+      message: error instanceof Error ? error.message : String(error),
+    });
     throw new Error("AI service error");
   }
 }

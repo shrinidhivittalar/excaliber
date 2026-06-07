@@ -508,24 +508,28 @@ export function useDrawingApp() {
         if (currentDrawingIdRef.current) {
           void autoSaveDrawing(safeScene)
         }
-      } catch (error) {
-        let errorContent = getNetworkErrorMessage(error) ?? 'Something went wrong'
+      } catch (err: unknown) {
+        let content = 'Something went wrong — try again.'
 
-        if (errorContent === 'Something went wrong' && axios.isAxiosError(error)) {
-          if (error.code === 'ECONNABORTED') {
-            errorContent = 'This is taking too long — try a simpler request'
-          } else {
-            const responseError = error.response?.data as { error?: string } | undefined
-            errorContent = responseError?.error ?? error.message
+        if (axios.isAxiosError(err)) {
+          const status = err.response?.status
+          const serverMsg = err.response?.data?.error as string | undefined
+
+          if (status === 503) {
+            content = serverMsg ?? 'The drawing service is busy — try again in a moment.'
+          } else if (status === 429) {
+            content = serverMsg ?? 'Too many requests — wait a moment and try again.'
+          } else if (err.code === 'ECONNABORTED') {
+            content = 'This is taking too long — try a simpler request.'
+          } else if (serverMsg) {
+            content = serverMsg
           }
-        } else if (errorContent === 'Something went wrong' && error instanceof Error) {
-          errorContent = error.message
         }
 
-        const errorMessage = createMessage('error', errorContent)
-        const updatedMessages = [...nextMessages, errorMessage]
-        setMessages(updatedMessages)
-        saveToStorage(updatedMessages, sceneJsonRef.current)
+        setMessages(prev => [
+          ...prev,
+          { id: crypto.randomUUID(), role: 'error' as const, content, timestamp: Date.now() }
+        ])
       } finally {
         setIsLoading(false)
       }

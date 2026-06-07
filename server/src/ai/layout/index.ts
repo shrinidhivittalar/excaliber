@@ -1,4 +1,5 @@
 import type { DiagramPlan, ComputedLayout } from './types'
+import { logger } from '../../lib/logger'
 import { validateAndFixPlan } from './validation'
 import { layoutFlowchart } from './algorithms/flowchart'
 import { layoutHierarchy } from './algorithms/hierarchy'
@@ -67,7 +68,7 @@ export function planToExcalidrawElements(
   let fixed: DiagramPlan
   try {
     const result = validateAndFixPlan(plan)
-    if (result.warnings.length > 0) console.warn('[LAYOUT VALIDATION]', result.warnings)
+    if (result.warnings.length > 0) logger.warn('layout_validation', { warnings: result.warnings })
     if (!result.valid) {
       throw new LayoutError('validation', result.errors.join(', '), result.errors.join(', '))
     }
