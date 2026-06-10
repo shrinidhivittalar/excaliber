@@ -13,7 +13,7 @@ import {
   extractCheckpointId,
   parseElementsJson,
 } from "./scene";
-import { SYSTEM_PROMPT } from "./systemPrompt";
+import { SYSTEM_PROMPT, INGEST_PROMPT } from "./systemPrompt";
 import { planToExcalidrawElements, LayoutError } from "./layout";
 import type { DiagramPlan } from "./layout/types";
 import type { DiagramTheme } from "./layout/themes";
@@ -163,6 +163,10 @@ function mcpToolsToGroqTools(): ChatCompletionTool[] {
 
 function getTools(): ChatCompletionTool[] {
   return [...mcpToolsToGroqTools(), FETCH_IMAGES_TOOL, PLAN_DIAGRAM_TOOL];
+}
+
+function getIngestTools(): ChatCompletionTool[] {
+  return [...mcpToolsToGroqTools(), PLAN_DIAGRAM_TOOL];
 }
 
 function historyToMessages(history: Message[]): ChatCompletionMessageParam[] {
@@ -361,6 +365,112 @@ async function executeToolCall(
   return { output, sceneJson: updatedScene };
 }
 
+interface ToolLoopResult {
+  reply: string
+  sceneJson: object
+  totalInputTokens: number
+  totalOutputTokens: number
+}
+
+async function runToolLoop(
+  messages: ChatCompletionMessageParam[],
+  tools: ChatCompletionTool[],
+  initialScene: object,
+  toolsUsed: string[],
+  stages: string[],
+  theme: DiagramTheme,
+  model: string,
+  requestId?: string,
+  userId?: string,
+): Promise<ToolLoopResult> {
+  let reply = ''
+  let iterations = 0
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
+  let sceneJson = initialScene
+
+  while (iterations < MAX_FUNCTION_ITERATIONS) {
+    const response = await withRetry(
+      () => withTimeout(
+        () => getGroq().chat.completions.create({
+          model,
+          messages,
+          tools,
+          tool_choice: 'auto',
+          temperature: 0.7,
+        }),
+        25_000,
+        'groq_completion'
+      ),
+      {
+        maxAttempts: 3,
+        baseDelayMs: 1_000,
+        shouldRetry: (err) => {
+          if (err instanceof Error) {
+            const msg = err.message.toLowerCase()
+            return msg.includes('rate') || msg.includes('timeout') || msg.includes('503')
+          }
+          return false
+        },
+      }
+    )
+
+    if (response.usage) {
+      totalInputTokens  += response.usage.prompt_tokens
+      totalOutputTokens += response.usage.completion_tokens
+    }
+
+    const assistantMessage = response.choices[0]?.message
+    if (!assistantMessage) break
+
+    const toolCalls = assistantMessage.tool_calls
+    if (!toolCalls?.length) {
+      reply = assistantMessage.content?.trim() ?? ''
+      break
+    }
+
+    messages.push({
+      role: 'assistant',
+      content: assistantMessage.content,
+      tool_calls: toolCalls,
+    })
+
+    for (const toolCall of toolCalls) {
+      const fn = toolCall.function
+      if (!fn?.name) continue
+
+      const toolName = fn.name
+      let args: Record<string, unknown> = {}
+      try {
+        args = JSON.parse(fn.arguments || '{}') as Record<string, unknown>
+      } catch {
+        args = {}
+      }
+
+      let result: { output: unknown; sceneJson: object }
+      try {
+        result = await executeToolCall(toolName, args, sceneJson, toolsUsed, stages, theme, requestId, userId)
+      } catch (toolError) {
+        const message = toolError instanceof Error ? toolError.message : 'Tool failed'
+        logger.error('tool_error', { requestId, userId, toolName, message })
+        result = { output: { error: message }, sceneJson }
+      }
+
+      sceneJson = result.sceneJson
+
+      messages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: JSON.stringify(result.output),
+      })
+    }
+
+    iterations += 1
+  }
+
+  return { reply, sceneJson, totalInputTokens, totalOutputTokens }
+}
+
 export async function processMessage(
   userMessage: string,
   history: Message[],
@@ -408,107 +518,12 @@ export async function processMessage(
     ];
 
     const tools = getTools();
-    let reply = "";
-    let iterations = 0;
-    let totalInputTokens  = 0
-    let totalOutputTokens = 0
 
-    while (iterations < MAX_FUNCTION_ITERATIONS) {
-      const response = await withRetry(
-        () => withTimeout(
-          () => getGroq().chat.completions.create({
-            model,
-            messages,
-            tools,
-            tool_choice: "auto",
-            temperature: 0.7,
-          }),
-          25_000,
-          'groq_completion'
-        ),
-        {
-          maxAttempts: 3,
-          baseDelayMs: 1_000,
-          shouldRetry: (err) => {
-            if (err instanceof Error) {
-              const msg = err.message.toLowerCase()
-              return msg.includes('rate') || msg.includes('timeout') || msg.includes('503')
-            }
-            return false
-          },
-        }
-      );
-
-      if (response.usage) {
-        totalInputTokens  += response.usage.prompt_tokens
-        totalOutputTokens += response.usage.completion_tokens
-      }
-
-      const assistantMessage = response.choices[0]?.message;
-      if (!assistantMessage) {
-        break;
-      }
-
-      const toolCalls = assistantMessage.tool_calls;
-      if (!toolCalls?.length) {
-        reply = assistantMessage.content?.trim() ?? "";
-        break;
-      }
-
-      messages.push({
-        role: "assistant",
-        content: assistantMessage.content,
-        tool_calls: toolCalls,
-      });
-
-      for (const toolCall of toolCalls) {
-        const fn = toolCall.function;
-        if (!fn?.name) {
-          continue;
-        }
-
-        const toolName = fn.name;
-        let args: Record<string, unknown> = {};
-
-        try {
-          args = JSON.parse(fn.arguments || "{}") as Record<string, unknown>;
-        } catch {
-          args = {};
-        }
-
-        let result: { output: unknown; sceneJson: object };
-        try {
-          result = await executeToolCall(
-            toolName,
-            args,
-            sceneJson,
-            toolsUsed,
-            stages,
-            theme,
-            requestId,
-            userId,
-          );
-        } catch (toolError) {
-          const message =
-            toolError instanceof Error ? toolError.message : "Tool failed";
-          logger.error('tool_error', { requestId, userId, toolName, message });
-          result = {
-            output: { error: message },
-            sceneJson,
-          };
-        }
-
-        sceneJson = result.sceneJson;
-
-        messages.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(result.output),
-        });
-      }
-
-      iterations += 1;
-    }
+    const loopResult = await runToolLoop(
+      messages, tools, sceneJson, toolsUsed, stages, theme, model, requestId, userId,
+    )
+    const { reply, totalInputTokens, totalOutputTokens } = loopResult
+    sceneJson = loopResult.sceneJson
 
     stages.push('Placing on canvas...')
 
@@ -557,5 +572,80 @@ export async function processMessage(
       message: error instanceof Error ? error.message : String(error),
     });
     throw new Error("AI service error");
+  }
+}
+
+export async function processIngest(
+  content: string,
+  filename?: string,
+  requestId?: string,
+  userId?: string,
+): Promise<ProcessMessageResult> {
+  if (!process.env.GROQ_API_KEY) {
+    throw new Error('AI service error')
+  }
+
+  const stages: string[] = []
+  const toolsUsed: string[] = []
+  stages.push('Reading document...')
+
+  const model = process.env.GROQ_MODEL ?? DEFAULT_MODEL
+  const ext = filename?.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const typeHint = ext ? `File type: .${ext}\n` : ''
+
+  const userMessage = [
+    typeHint,
+    'Analyse the content below and call plan_diagram to create a diagram that best represents its structure:\n\n',
+    '<document>\n',
+    content.slice(0, 10_000),
+    '\n</document>',
+  ].join('')
+
+  const messages: ChatCompletionMessageParam[] = [
+    { role: 'system', content: INGEST_PROMPT },
+    { role: 'user', content: userMessage },
+  ]
+
+  stages.push('Analysing structure...')
+
+  const tools = getIngestTools()
+
+  try {
+    const loopResult = await runToolLoop(
+      messages, tools, {}, toolsUsed, stages, 'default', model, requestId, userId,
+    )
+    const { reply, totalInputTokens, totalOutputTokens } = loopResult
+    const sceneJson = loopResult.sceneJson
+
+    stages.push('Placing on canvas...')
+
+    const totalTokens = totalInputTokens + totalOutputTokens
+    if (totalTokens > 0) {
+      logger.info('groq_tokens', {
+        requestId,
+        userId,
+        inputTokens:  totalInputTokens,
+        outputTokens: totalOutputTokens,
+        totalTokens,
+      })
+      if (userId) recordUsage(userId, totalTokens)
+    }
+
+    return {
+      reply: reply || 'Here is a diagram based on your content.',
+      sceneJson: buildSceneFromElements(
+        (sceneJson as { elements?: unknown[] }).elements ?? [],
+        sceneJson,
+      ),
+      toolsUsed,
+      stages,
+    }
+  } catch (error) {
+    logger.error('ingest_error', {
+      requestId,
+      userId,
+      message: error instanceof Error ? error.message : String(error),
+    })
+    throw new Error('AI service error')
   }
 }

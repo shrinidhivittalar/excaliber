@@ -74,6 +74,7 @@ export default function CanvasPage() {
     excalidrawAPIRef,
     selectedNode,
     clearSelectedNode,
+    ingestDocument,
   } = useDrawingApp()
 
   useEffect(() => {
@@ -237,6 +238,7 @@ export default function CanvasPage() {
           isLoading={isLoading}
           loadingStage={loadingStage}
           onSubmit={sendMessage}
+          onIngest={ingestDocument}
         />
 
         {selectedNode && (

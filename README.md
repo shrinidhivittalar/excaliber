@@ -215,3 +215,28 @@ field (not a messages entry) so Groq can cache it across requests.
   USER_RATE_LIMIT_COUNT=10      # max requests per user per window
   USER_RATE_LIMIT_MS=60000      # window duration in milliseconds
   DAILY_TOKEN_LIMIT=100000      # max tokens per user per day
+
+## Phase 8 — Document to Diagram + Voice Input
+
+### Document to diagram
+Click the paperclip icon in the command bar to open the document panel.
+Paste any text or upload a file (.md, .ts, .js, .py, .json, .yaml and more).
+The AI analyses the content, detects its type (code, docs, API spec, notes),
+picks an appropriate layout, and draws a diagram of its structure.
+File size limit: 50KB. Content is truncated at 12,000 characters before
+being sent to the AI.
+
+Content type → layout mapping:
+  Code files     → hierarchy (modules, classes, functions)
+  README / docs  → mindmap (sections, features, concepts)
+  API specs      → flowchart (endpoints, resources)
+  JSON / YAML    → hierarchy (keys, nested structure)
+  Meeting notes  → mindmap (topics, decisions, actions)
+  Plain prose    → mindmap (extracted key concepts)
+
+### Voice input
+Click the microphone icon in the command bar (or it appears automatically
+when your browser supports the Web Speech API). Speak your prompt — interim
+transcript appears in real time in the input. The prompt auto-submits 600ms
+after the final result is detected. Click the mic again or press Esc to cancel.
+Supported in Chrome, Edge, and Safari. Not available in Firefox without flags.

@@ -120,6 +120,18 @@ export const shareApi = {
   get: (shareId: string) => api.get(`/share/${shareId}`),
 }
 
+export const ingestApi = {
+  fromContent: async (content: string, filename?: string) => {
+    const response = await api.post('/ingest', { content, filename })
+    return response.data as {
+      reply:      string
+      sceneJson:  object
+      toolsUsed:  string[]
+      stages:     string[]
+    }
+  },
+}
+
 // Existing canvas endpoints (keep these)
 export const sendMessage = async (
   message: string,

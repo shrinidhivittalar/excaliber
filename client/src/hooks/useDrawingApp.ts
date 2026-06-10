@@ -4,7 +4,7 @@ import { exportToBlob } from '@excalidraw/excalidraw'
 import { parseMermaidToExcalidraw } from '@excalidraw/mermaid-to-excalidraw'
 import axios from 'axios'
 import * as api from '@/lib/api'
-import { drawingsApi, foldersApi, versionsApi } from '@/lib/api'
+import { drawingsApi, foldersApi, versionsApi, ingestApi } from '@/lib/api'
 import { sanitizeAppState, sanitizeScene, prepareElementsForCanvas } from '@/lib/scene'
 import type { DrawingFull, Folder, Message, VersionMeta } from '@/lib/types'
 import type { SelectedNode } from '../components/NodePanel'
@@ -565,6 +565,40 @@ export function useDrawingApp() {
     [autoSaveDrawing]
   )
 
+  async function ingestDocument(content: string, filename?: string): Promise<void> {
+    setIsLoading(true)
+    setLoadingStage('Reading document...')
+
+    try {
+      const data = await ingestApi.fromContent(content, filename)
+
+      if (data.stages?.length) {
+        for (const stage of data.stages) {
+          setLoadingStage(stage)
+          await new Promise<void>(r => setTimeout(r, 350))
+        }
+      }
+
+      const safeScene = sanitizeScene(data.sceneJson)
+      setSceneJson(safeScene)
+      applySceneToCanvas(excalidrawAPIRef.current, safeScene)
+
+      setMessages(prev => [
+        ...prev,
+        createMessage('assistant', data.reply || 'Here is a diagram of your document.', data.toolsUsed),
+      ])
+    } catch (err) {
+      const msg = axios.isAxiosError(err)
+        ? ((err.response?.data as { error?: string })?.error ?? err.message)
+        : err instanceof Error ? err.message : 'Could not generate diagram'
+      setMessages(prev => [...prev, createMessage('error', msg)])
+      throw err
+    } finally {
+      setIsLoading(false)
+      setLoadingStage('Thinking...')
+    }
+  }
+
   function changeTheme(t: 'minimal' | 'default' | 'vibrant') {
     setTheme(t)
     localStorage.setItem('ai-drawing-theme', t)
@@ -676,6 +710,7 @@ export function useDrawingApp() {
     currentTags,
     isSaving,
     sendMessage,
+    ingestDocument,
     retryLastMessage,
     loadingStage,
     theme,

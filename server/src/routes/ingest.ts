@@ -1,0 +1,76 @@
+import { Router } from 'express'
+import { z } from 'zod'
+import { requireAuth } from '../middleware/auth'
+import { userRateLimit } from '../middleware/userRateLimit'
+import { processIngest } from '../ai/groq'
+import { logger } from '../lib/logger'
+import { withTimeout } from '../lib/retry'
+
+const router = Router()
+
+const ingestSchema = z.object({
+  content: z
+    .string()
+    .min(10,    'Content too short — paste at least a few lines')
+    .max(12000, 'Content too long — keep it under 12,000 characters'),
+  filename: z.string().max(200).regex(/^[\w\-. ]+$/, 'Invalid filename').optional(),
+})
+
+router.post('/', requireAuth, userRateLimit, async (req, res) => {
+  const parsed = ingestSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.issues[0].message })
+  }
+
+  const { content, filename } = parsed.data
+  const startTime = Date.now()
+
+  const INJECTION_PATTERNS = /ignore (previous|prior|all) instructions?|disregard|system prompt/i
+  if (INJECTION_PATTERNS.test(content)) {
+    logger.warn('ingest_injection_attempt', {
+      requestId: req.requestId,
+      userId:    req.userId,
+      chars:     content.length,
+    })
+  }
+
+  logger.info('ingest_request', {
+    requestId: req.requestId,
+    userId:    req.userId,
+    chars:     content.length,
+    filename,
+  })
+
+  try {
+    const result = await withTimeout(
+      () => processIngest(content, filename, req.requestId, req.userId),
+      30_000,
+      'processIngest'
+    )
+
+    logger.info('ingest_complete', {
+      requestId:  req.requestId,
+      userId:     req.userId,
+      durationMs: Date.now() - startTime,
+    })
+
+    res.json(result)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unexpected error'
+    const isTimeout = message.includes('timed out')
+
+    logger.error('ingest_error', {
+      requestId: req.requestId,
+      userId:    req.userId,
+      message,
+    })
+
+    res.status(isTimeout ? 503 : 500).json({
+      error: isTimeout
+        ? 'This is taking too long — try a shorter document.'
+        : 'Could not generate a diagram from this content.',
+    })
+  }
+})
+
+export default router

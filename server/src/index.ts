@@ -22,6 +22,7 @@ import drawingsRoutes from "./routes/drawings";
 import foldersRoutes from "./routes/folders";
 import versionsRoutes from "./routes/versions";
 import shareRoutes from "./routes/share";
+import ingestRoutes from "./routes/ingest";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -77,6 +78,7 @@ app.use("/api/folders", foldersRoutes);
 app.use("/api/drawings", versionsRoutes);
 app.use("/api/drawings", drawingsRoutes);
 app.use("/api/share", shareRoutes);
+app.use("/api/ingest", ingestRoutes);
 
 async function startServer() {
   await connectDB();
