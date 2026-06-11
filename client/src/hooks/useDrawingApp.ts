@@ -664,7 +664,7 @@ export function useDrawingApp() {
   const handleSceneChange = useCallback(
     (elements: readonly unknown[], appState: AppState) => {
       const selectedIds = Object.keys(
-        (appState as Record<string, unknown>).selectedElementIds as Record<string, boolean> ?? {}
+        (appState as unknown as Record<string, unknown>).selectedElementIds as Record<string, boolean> ?? {}
       )
 
       if (selectedIds.length === 1) {
