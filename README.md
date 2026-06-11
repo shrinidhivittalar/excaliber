@@ -22,7 +22,7 @@ npm run dev
 
 Open http://localhost:5173
 
-## V2 Setup (MongoDB + Auth)
+## Phase 2 Setup (MongoDB + Auth)
 
 ### 1. Create MongoDB Atlas cluster
 - Go to https://cloud.mongodb.com
@@ -50,14 +50,14 @@ npm run dev
 ```
 Same as before — no new commands needed.
 
-## New Features (V2)
+## New Features (P2)
 - Create account and sign in with email + password
 - Save drawings to your account
 - Load and continue any saved drawing
 - Share drawings via a public link
 - Dashboard showing all your saved drawings
 
-## V3 Features
+## Phase 3 Features
 
 ### AI Improvements
 - Smarter auto-layout: the AI picks from 7 layout strategies (flowchart, hierarchy, cycle, etc.)
@@ -146,7 +146,7 @@ If the password contains special characters (`@`, `#`, etc.), URL-encode it in t
 - Env var:
   - `VITE_API_URL=https://<your-render-service>.onrender.com/api`
 
-## V5 — Core Quality Overhaul
+## Phase 5 — Core Quality Overhaul
 
 No new features. The existing core loop brought up to a quality standard
 where you would happily show the output to someone.
@@ -183,7 +183,7 @@ localStorage and included in every request.
 and writes it directly to the clipboard, ready to paste into a document
 or message.
 
-## V6 — Production Hardening
+## Phase 6 — Production Hardening
 
 ### Error handling
 Every request has a unique ID (X-Request-Id header) that appears in every
