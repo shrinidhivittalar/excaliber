@@ -1,5 +1,4 @@
-import { useEffect } from 'react'
-import { Save, Share2, Loader2 } from 'lucide-react'
+import { Save, Share2, Loader2, Undo2 } from 'lucide-react'
 
 interface CanvasActionsProps {
   onSave:            () => void
@@ -9,18 +8,29 @@ interface CanvasActionsProps {
   showHistoryToggle: boolean
   historyOpen:       boolean
   onHistoryToggle:   () => void
+  canUndo:           boolean
+  onUndo:            () => void
 }
 
 export function CanvasActions({
   onSave, onShare, isSaving, currentDrawingId,
   showHistoryToggle, historyOpen, onHistoryToggle,
+  canUndo, onUndo,
 }: CanvasActionsProps) {
-  useEffect(() => {
-    console.log('[CanvasActions] mounted')
-  }, [])
-
   return (
     <div className="fixed top-4 right-4 z-[100] flex items-center gap-1.5">
+      {canUndo && (
+        <button
+          onClick={onUndo}
+          title="Undo last AI action"
+          className="w-8 h-8 flex items-center justify-center rounded-lg
+                     bg-black/50 border border-white/[0.08] text-white/40
+                     hover:text-white/70 hover:border-white/15 transition-all duration-150"
+        >
+          <Undo2 size={13} />
+        </button>
+      )}
+
       {showHistoryToggle && (
         <button
           onClick={onHistoryToggle}

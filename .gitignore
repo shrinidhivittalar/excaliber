@@ -18,6 +18,8 @@ build/
 # misc
 .DS_Store
 *.pem
+CODEBASE.md
+PRESENTATION_NOTES.md
 
 # debug
 npm-debug.log*

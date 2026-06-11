@@ -154,7 +154,10 @@ export function useDrawingApp() {
   const [versionsLoading, setVersionsLoading] = useState(false)
   const [versionToast, setVersionToast] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null)
+  const [canUndo, setCanUndo] = useState(false)
+  const [errorToast, setErrorToast] = useState<string | null>(null)
 
+  const prevSceneRef = useRef<object | null>(null)
   const themeRef = useRef(theme)
 
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null)
@@ -195,6 +198,12 @@ export function useDrawingApp() {
   useEffect(() => {
     themeRef.current = theme
   }, [theme])
+
+  useEffect(() => {
+    if (!errorToast) return
+    const t = setTimeout(() => setErrorToast(null), 5000)
+    return () => clearTimeout(t)
+  }, [errorToast])
 
   const loadVersions = useCallback(async (drawingId?: string) => {
     const id = drawingId ?? currentDrawingIdRef.current
@@ -347,6 +356,8 @@ export function useDrawingApp() {
     setSceneJson(EMPTY_SCENE)
     clearLocalStorage()
     setIsCanvasLoading(false)
+    prevSceneRef.current = null
+    setCanUndo(false)
     applySceneToCanvas(excalidrawAPIRef.current, EMPTY_SCENE)
   }, [])
 
@@ -525,6 +536,8 @@ export function useDrawingApp() {
           }
         }
 
+        prevSceneRef.current = sceneJsonRef.current
+        setCanUndo(true)
         setSceneJson(safeScene)
         saveToStorage(updatedMessages, safeScene)
         try {
@@ -554,10 +567,7 @@ export function useDrawingApp() {
           }
         }
 
-        setMessages(prev => [
-          ...prev,
-          { id: crypto.randomUUID(), role: 'error' as const, content, timestamp: Date.now() }
-        ])
+        setErrorToast(content)
       } finally {
         setIsLoading(false)
       }
@@ -580,6 +590,8 @@ export function useDrawingApp() {
       }
 
       const safeScene = sanitizeScene(data.sceneJson)
+      prevSceneRef.current = sceneJsonRef.current
+      setCanUndo(true)
       setSceneJson(safeScene)
       applySceneToCanvas(excalidrawAPIRef.current, safeScene)
 
@@ -591,13 +603,21 @@ export function useDrawingApp() {
       const msg = axios.isAxiosError(err)
         ? ((err.response?.data as { error?: string })?.error ?? err.message)
         : err instanceof Error ? err.message : 'Could not generate diagram'
-      setMessages(prev => [...prev, createMessage('error', msg)])
-      throw err
+      throw err instanceof Error ? err : new Error(msg)
     } finally {
       setIsLoading(false)
       setLoadingStage('Thinking...')
     }
   }
+
+  const undoLastAiAction = useCallback(() => {
+    if (!prevSceneRef.current) return
+    const prev = prevSceneRef.current
+    prevSceneRef.current = null
+    setCanUndo(false)
+    setSceneJson(prev)
+    applySceneToCanvas(excalidrawAPIRef.current, prev)
+  }, [])
 
   function changeTheme(t: 'minimal' | 'default' | 'vibrant') {
     setTheme(t)
@@ -717,6 +737,10 @@ export function useDrawingApp() {
     changeTheme,
     selectedNode,
     clearSelectedNode: () => setSelectedNode(null),
+    canUndo,
+    undoLastAiAction,
+    errorToast,
+    clearErrorToast: () => setErrorToast(null),
     clearAll,
     saveDrawing,
     shareDrawing,

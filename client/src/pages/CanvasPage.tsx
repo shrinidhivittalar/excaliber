@@ -75,6 +75,10 @@ export default function CanvasPage() {
     selectedNode,
     clearSelectedNode,
     ingestDocument,
+    canUndo,
+    undoLastAiAction,
+    errorToast,
+    clearErrorToast,
   } = useDrawingApp()
 
   useEffect(() => {
@@ -201,7 +205,6 @@ export default function CanvasPage() {
           onSave={(t) => { setCurrentTitle(t); void saveDrawing({ title: t }) }}
         />
 
-        {(() => { console.log('[CanvasActions props]', { isSaving, currentDrawingId, saveDrawing, shareDrawing }); return null })()}
         <CanvasActions
           onSave={() => void saveDrawing()}
           onShare={() => void shareDrawing()}
@@ -210,23 +213,26 @@ export default function CanvasPage() {
           showHistoryToggle={messages.length > 0}
           historyOpen={historyOpen}
           onHistoryToggle={() => setHistoryOpen(v => !v)}
+          canUndo={canUndo}
+          onUndo={undoLastAiAction}
         />
 
-        <Link
-          to="/dashboard"
-          className="fixed top-4 left-4 z-40 text-xs text-white/35 hover:text-white/60 transition-colors bg-black/50 border border-white/8 rounded-lg px-2.5 py-1.5 backdrop-blur-sm"
-        >
-          ← Dashboard
-        </Link>
+        <div className="fixed top-4 left-4 z-40 flex items-center gap-2">
+          <Link
+            to="/dashboard"
+            className="text-xs text-white/35 hover:text-white/60 transition-colors bg-black/50 border border-white/8 rounded-lg px-2.5 py-1.5 backdrop-blur-sm"
+          >
+            ← Dashboard
+          </Link>
 
-        <button
-          onClick={copyAsPng}
-          title="Copy canvas as PNG"
-          className="absolute left-3 top-10 z-40 flex items-center gap-1.5 text-[11px] text-white/40 hover:text-white/80 bg-black/60 hover:bg-black/80 backdrop-blur-sm border border-white/10 rounded-lg px-2.5 py-1.5 transition-all duration-150"
-          style={{ position: 'absolute', top: '2.5rem', left: '0.75rem', zIndex: 40 }}
-        >
-          {copied ? '✓ Copied' : '⬡ Copy PNG'}
-        </button>
+          <button
+            onClick={copyAsPng}
+            title="Copy canvas as PNG"
+            className="flex items-center gap-1.5 text-[11px] text-white/40 hover:text-white/80 bg-black/60 hover:bg-black/80 backdrop-blur-sm border border-white/10 rounded-lg px-2.5 py-1.5 transition-all duration-150"
+          >
+            {copied ? '✓ Copied' : '⬡ Copy PNG'}
+          </button>
+        </div>
 
         <HistoryDrawer
           messages={messages}
@@ -275,6 +281,33 @@ export default function CanvasPage() {
             folderName={currentFolderName}
             tags={currentTags}
           />
+        )}
+
+        {/* Empty canvas first-run hint */}
+        {!showLoadingOverlay && !isLoading && messages.length === 0 &&
+          !(scene.elements && (scene.elements as unknown[]).length > 0) && (
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center
+                          justify-center z-10 select-none">
+            <p className="text-white/10 text-sm font-light tracking-wide">
+              Describe what to draw below ↓
+            </p>
+          </div>
+        )}
+
+        {/* Error toast */}
+        {errorToast && (
+          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200]
+                          flex items-center gap-2
+                          bg-red-950/90 border border-red-500/30
+                          rounded-xl px-4 py-2.5 shadow-2xl animate-slide-up">
+            <span className="text-xs text-red-200/90">{errorToast}</span>
+            <button
+              onClick={clearErrorToast}
+              className="text-red-400/60 hover:text-red-300 text-xs leading-none ml-1 transition-colors"
+            >
+              ✕
+            </button>
+          </div>
         )}
 
         {!showLoadingOverlay && (

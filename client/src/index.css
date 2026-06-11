@@ -181,8 +181,21 @@
 }
 .animate-slide-up { animation: slideUp 0.15s ease-out; }
 
-/* Excalidraw native filename/title sweep */
+@keyframes waveBar {
+  0%, 100% { height: 3px;  opacity: 0.4; }
+  50%       { height: 14px; opacity: 1;   }
+}
+.wave-bar { animation: waveBar 0.75s ease-in-out infinite; }
+
+/* Excalidraw native UI overrides */
 .excalidraw .App-top-bar { display: none !important; }
 .excalidraw [class*="filename"] { display: none !important; }
 .excalidraw [class*="title"] { display: none !important; }
 .excalidraw .zen-mode-transition.App-menu_top { display: none !important; }
+.excalidraw footer { display: none !important; }
+.excalidraw .App-toolbar--mobile { display: none !important; }
+.excalidraw .layer-ui__wrapper__footer-right { display: none !important; }
+.excalidraw .undo-redo-buttons { display: none !important; }
+.excalidraw [class*="undo"] { display: none !important; }
+.excalidraw [class*="Library"] { display: none !important; }
+.excalidraw [class*="library"] { display: none !important; }
