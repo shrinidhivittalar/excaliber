@@ -240,3 +240,32 @@ when your browser supports the Web Speech API). Speak your prompt — interim
 transcript appears in real time in the input. The prompt auto-submits 600ms
 after the final result is detected. Click the mic again or press Esc to cancel.
 Supported in Chrome, Edge, and Safari. Not available in Firefox without flags.
+
+## Phase 9 — Visual Feedback Loop
+
+After every diagram is drawn, the AI reviews its own output:
+
+  1. The client exports the rendered canvas as a compressed PNG
+  2. The image is sent to /api/critique
+  3. The server calls Groq llama-3.2-11b-vision-preview (free tier,
+     same API key as the drawing AI — no new signup)
+  4. The vision model looks for specific visual problems: text overflow,
+     overlapping nodes, unreadable labels
+  5. If issues are found, a targeted correction pass re-draws the diagram
+     with adjusted node sizes and layout
+  6. The corrected diagram replaces the original silently
+
+The review runs in the background — the diagram appears immediately and
+corrections are applied within a few seconds if needed. A small "✓ Auto-corrected"
+toast appears briefly when a correction runs.
+
+Auto-correct can be toggled off via the eye icon in the top-right canvas
+controls. The preference is stored in localStorage.
+
+### New environment variable
+  CRITIQUE_RATE_LIMIT_COUNT=5   # max visual reviews per user per minute
+
+### Why no new API key
+Groq's llama-3.2-11b-vision-preview is multimodal and available on the
+same free tier as the text models. The GROQ_API_KEY already configured
+in server/.env covers both the drawing AI and the visual critique.

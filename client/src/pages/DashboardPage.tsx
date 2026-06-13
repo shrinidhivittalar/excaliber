@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  FolderOpen,
   LayoutGrid,
   List,
   LogOut,
@@ -76,16 +75,16 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-black text-white">
-      <aside className="fixed flex h-screen w-[240px] shrink-0 flex-col border-r border-white/10 bg-black">
+    <div className="flex min-h-screen bg-black text-white animate-[page-enter_0.2s_ease-out]">
+      <aside className="fixed flex h-screen w-[240px] shrink-0 flex-col border-r border-white/10 bg-gradient-to-b from-zinc-900 to-black">
         <div className="border-b border-white/10 px-4 py-5">
-          <h1 className="text-sm font-semibold tracking-tight">✦ Excaliber</h1>
+          <h1 className="text-sm font-semibold tracking-tight"><span className="text-amber-400">✦</span> Excaliber</h1>
         </div>
 
         <div className="flex flex-1 flex-col overflow-hidden px-3 py-4">
           <Button
             onClick={() => navigate('/')}
-            className="mb-4 w-full bg-white text-black hover:bg-white/90"
+            className="mb-4 w-full bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 shadow-md shadow-amber-500/20 hover:from-amber-400 hover:to-orange-400"
           >
             <Plus className="size-4" />
             New Drawing
@@ -144,7 +143,15 @@ export default function DashboardPage() {
         </div>
       </aside>
 
-      <main className="ml-[240px] flex min-h-screen flex-1 flex-col">
+      <main className="relative ml-[240px] flex min-h-screen flex-1 flex-col">
+        {/* Dot grid background */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.4]"
+          style={{
+            backgroundImage: 'radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)',
+            backgroundSize: '24px 24px',
+          }}
+        />
         <div className="border-b border-white/10 px-6 py-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative max-w-md flex-1">
@@ -253,9 +260,10 @@ export default function DashboardPage() {
             />
           ) : dashboard.viewMode === 'grid' ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {dashboard.filteredDrawings.map((drawing) => (
+              {dashboard.filteredDrawings.map((drawing, index) => (
                 <DrawingCard
                   key={drawing._id}
+                  index={index}
                   drawing={drawing}
                   onOpen={(id) => navigate(`/drawing/${id}`)}
                   onDelete={(id) => void dashboard.deleteDrawing(id)}
@@ -309,10 +317,18 @@ function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-white/10 py-20 text-center">
-      <FolderOpen className="mb-4 size-10 text-white/20" />
+      <svg width="64" height="52" viewBox="0 0 64 52" fill="none" className="mb-5 text-white/[0.09]">
+        <rect x="2"  y="2"  width="24" height="16" rx="3" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 2.5"/>
+        <rect x="38" y="2"  width="24" height="16" rx="3" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 2.5"/>
+        <rect x="20" y="34" width="24" height="16" rx="3" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 2.5"/>
+        <path d="M14 18v6M50 18v6M14 24h18M50 24H32M32 24v10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+      </svg>
       <p className="font-medium text-white/80">{title}</p>
       <p className="mt-1 text-sm text-white/40">{description}</p>
-      <Button onClick={onAction} className="mt-6 bg-white text-black hover:bg-white/90">
+      <Button
+        onClick={onAction}
+        className="mt-6 bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 hover:from-amber-400 hover:to-orange-400"
+      >
         {actionLabel}
       </Button>
     </div>
@@ -335,8 +351,10 @@ function SidebarNavItem({
       type="button"
       onClick={onClick}
       className={cn(
-        'flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors',
-        active ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white'
+        'flex w-full items-center justify-between rounded-lg py-2 text-sm transition-all duration-150 border-l-2',
+        active
+          ? 'border-amber-500 bg-amber-500/[0.12] pl-2.5 pr-3 text-white'
+          : 'border-transparent px-3 text-white/60 hover:bg-white/5 hover:text-white'
       )}
     >
       <span>{label}</span>
@@ -366,8 +384,10 @@ function FolderNavItem({
         type="button"
         onClick={onSelect}
         className={cn(
-          'flex w-full items-center gap-2 rounded-lg px-3 py-2 pr-14 text-sm transition-colors',
-          active ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white'
+          'flex w-full items-center gap-2 rounded-lg py-2 pr-14 text-sm transition-all duration-150 border-l-2',
+          active
+            ? 'border-amber-500 bg-amber-500/[0.12] pl-2.5 text-white'
+            : 'border-transparent pl-3 text-white/60 hover:bg-white/5 hover:text-white'
         )}
       >
         <span
@@ -827,17 +847,28 @@ function DrawingCard({
   onOpen,
   onDelete,
   onTitleSave,
+  index = 0,
 }: {
   drawing:     DrawingMeta
   onOpen:      (id: string) => void
   onDelete:    (id: string) => void
   onTitleSave: (id: string, title: string) => void
+  index?:      number
 }) {
   const [editing,    setEditing]    = useState(false)
   const [titleVal,   setTitleVal]   = useState(drawing.title)
   const [menuOpen,   setMenuOpen]   = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+  const [mouse,      setMouse]      = useState<{ x: number; y: number } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = cardRef.current?.getBoundingClientRect()
+    if (!rect) return
+    setMouse({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+  }
+  const handleMouseLeave = () => setMouse(null)
 
   useClickOutside(menuRef, () => setMenuOpen(false), menuOpen)
 
@@ -865,8 +896,19 @@ function DrawingCard({
 
   return (
     <div
-      className="bg-white/[0.04] border border-white/[0.08] rounded-xl
-                 hover:border-white/15 transition-all duration-200 group cursor-pointer relative"
+      ref={cardRef}
+      className="border border-white/[0.08] rounded-xl
+                 hover:border-white/[0.18] hover:shadow-[0_8px_32px_rgba(0,0,0,0.5)]
+                 transition-all duration-200 group cursor-pointer relative
+                 animate-[stagger-fade-up_0.4s_ease-out_both]"
+      style={{
+        background: mouse
+          ? `radial-gradient(280px at ${mouse.x}px ${mouse.y}px, rgba(245,158,11,0.08), rgba(255,255,255,0.04) 70%)`
+          : 'rgba(255,255,255,0.04)',
+        animationDelay: `${Math.min(index * 50, 400)}ms`,
+      }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
       onClick={() => !editing && !menuOpen && onOpen(drawing._id)}
     >
       {/* Thumbnail area — overflow-hidden + rounded-t-xl clips image to card corners */}
@@ -1056,7 +1098,7 @@ function DrawingRow({
   }
 
   return (
-    <article className="flex items-center gap-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+    <article className="flex items-center gap-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 transition-all duration-150 hover:border-white/[0.18] hover:bg-white/[0.07]">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           {isEditing ? (

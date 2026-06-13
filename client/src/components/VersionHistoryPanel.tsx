@@ -43,7 +43,7 @@ export function VersionHistoryPanel({
 
   return (
     <aside
-      className="fixed top-0 right-[400px] z-[55] flex h-screen w-[300px] flex-col border-l border-white/10 bg-black/90 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md"
+      className="fixed top-12 right-[400px] z-[55] flex h-[calc(100vh-3rem)] w-[300px] flex-col border-l border-white/10 bg-black/90 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md"
       aria-label="Version history"
     >
       <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-4">
@@ -96,7 +96,7 @@ export function VersionHistoryPanel({
                         onClick={() => handleRestore(version)}
                         className={cn(
                           'opacity-0 transition-opacity group-hover:opacity-100',
-                          'bg-white text-black hover:bg-white/90'
+                          'bg-amber-500 text-white hover:bg-amber-400 border-0'
                         )}
                       >
                         {isRestoring ? 'Restoring…' : 'Restore'}

@@ -27,8 +27,8 @@ export function HistoryDrawer({ messages, isOpen, onClose }: HistoryDrawerProps)
 
       {/* Drawer card */}
       <div className="fixed top-14 right-4 z-50 w-72 max-h-96 flex flex-col
-                      bg-[#111111] border border-white/10 rounded-2xl shadow-2xl
-                      overflow-hidden animate-slide-up">
+                      bg-zinc-900/95 border border-white/[0.08] rounded-2xl backdrop-blur-2xl
+                      shadow-[0_4px_24px_rgba(0,0,0,0.5)] overflow-hidden animate-slide-up">
 
         <div className="flex items-center justify-between px-4 py-3
                         border-b border-white/[0.06] flex-shrink-0">
@@ -52,7 +52,7 @@ export function HistoryDrawer({ messages, isOpen, onClose }: HistoryDrawerProps)
           ) : (
             visible.map(msg => (
               <div key={msg.id} className="flex gap-2 items-start">
-                <span className="text-white/15 text-[10px] mt-0.5 flex-shrink-0 w-3">
+                <span className={`text-[10px] mt-0.5 flex-shrink-0 w-3 ${msg.role === 'assistant' ? 'text-amber-400/60' : 'text-white/15'}`}>
                   {msg.role === 'user' ? '→' : '✦'}
                 </span>
                 <p

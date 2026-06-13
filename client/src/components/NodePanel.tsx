@@ -28,7 +28,7 @@ export function NodePanel({ node, onExplain, onDrillDown, onClose }: NodePanelPr
   return (
     <div
       ref={ref}
-      className="fixed z-50 flex items-center gap-px bg-black/90 backdrop-blur-md border border-white/15 rounded-xl px-1 py-1 shadow-2xl"
+      className="fixed z-50 flex items-center gap-px bg-zinc-900/95 backdrop-blur-xl border border-white/[0.1] rounded-xl px-1 py-1 shadow-[0_4px_24px_rgba(0,0,0,0.6)]"
       style={{
         left:      node.screenX,
         top:       node.screenY - 54,
@@ -37,14 +37,14 @@ export function NodePanel({ node, onExplain, onDrillDown, onClose }: NodePanelPr
     >
       <button
         onClick={() => { onExplain(node.label); onClose() }}
-        className="text-[11px] text-white/65 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors whitespace-nowrap"
+        className="text-[11px] text-white/65 hover:text-white px-3 py-1.5 rounded-lg hover:bg-amber-500/[0.15] transition-colors whitespace-nowrap"
       >
         Explain
       </button>
-      <div className="w-px h-4 bg-white/10 mx-0.5" />
+      <div className="w-px h-4 bg-white/[0.08] mx-0.5" />
       <button
         onClick={() => { onDrillDown(node.label); onClose() }}
-        className="text-[11px] text-white/65 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors whitespace-nowrap"
+        className="text-[11px] text-white/65 hover:text-white px-3 py-1.5 rounded-lg hover:bg-amber-500/[0.15] transition-colors whitespace-nowrap"
       >
         Go deeper ↗
       </button>

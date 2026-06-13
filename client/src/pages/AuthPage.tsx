@@ -73,11 +73,21 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black px-4">
-      <div className="w-full max-w-[400px] rounded-xl border border-white/10 bg-zinc-950 p-6 shadow-xl">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4
+                    animate-[page-enter_0.25s_ease-out]"
+         style={{ background: 'radial-gradient(ellipse at top, #2d1200 0%, #000 70%)' }}>
+      {/* Ambient orbs */}
+      <div className="pointer-events-none absolute -left-32 -top-32 h-96 w-96 animate-[orb-float_12s_ease-in-out_infinite]
+                      rounded-full bg-amber-500/[0.09] blur-[80px]" />
+      <div className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 animate-[orb-float_16s_ease-in-out_infinite_reverse]
+                      rounded-full bg-orange-500/[0.07] blur-[60px]" />
+      <div className="pointer-events-none absolute bottom-0 left-1/2 h-64 w-[600px] -translate-x-1/2
+                      rounded-full bg-amber-600/[0.05] blur-[80px]" />
+
+      <div className="relative w-full max-w-[400px] rounded-xl border border-white/10 bg-zinc-950 p-6 shadow-[0_0_80px_rgba(245,158,11,0.08),_0_32px_64px_rgba(0,0,0,0.8)]">
         <header className="mb-6 text-center">
           <h1 className="text-xl font-semibold tracking-tight text-white">
-            ✦ Excaliber
+            <span className="text-amber-400">✦</span> Excaliber
           </h1>
           <p className="mt-2 text-sm text-zinc-400">
             Sign in to save your drawings
@@ -158,8 +168,9 @@ export default function AuthPage() {
             type="submit"
             disabled={isSubmitting}
             className={cn(
-              'h-10 w-full rounded-lg border-0 bg-white text-sm font-medium text-black',
-              'hover:bg-white/90 disabled:opacity-60'
+              'h-10 w-full rounded-lg border-0 text-sm font-medium text-white',
+              'bg-gradient-to-r from-amber-500 to-orange-500',
+              'hover:from-amber-400 hover:to-orange-400 disabled:opacity-60'
             )}
           >
             {isSubmitting
@@ -173,3 +184,4 @@ export default function AuthPage() {
     </div>
   )
 }
+

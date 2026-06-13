@@ -132,6 +132,17 @@ export const ingestApi = {
   },
 }
 
+export const critiqueApi = {
+  run: async (imageBase64: string, originalPlan: object, sceneJson: object) => {
+    const response = await api.post('/critique', { imageBase64, originalPlan, sceneJson })
+    return response.data as {
+      corrected:    boolean
+      sceneJson:    object | null
+      issuesFound?: string[]
+    }
+  },
+}
+
 // Existing canvas endpoints (keep these)
 export const sendMessage = async (
   message: string,
@@ -156,6 +167,7 @@ export const sendMessage = async (
     toolsUsed: string[]
     stages: string[]
     mermaidDiagram?: string
+    lastPlan?: object
   }
 }
 

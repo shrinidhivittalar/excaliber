@@ -32,6 +32,7 @@ export interface ProcessMessageResult {
   toolsUsed: string[];
   stages: string[];
   mermaidDiagram?: string;
+  lastPlan?: object;
 }
 
 const MAX_FUNCTION_ITERATIONS = 10;
@@ -251,7 +252,7 @@ async function executeToolCall(
   theme: DiagramTheme,
   requestId?: string,
   userId?: string,
-): Promise<{ output: unknown; sceneJson: object }> {
+): Promise<{ output: unknown; sceneJson: object; lastPlan?: object }> {
   const normalizedArgs =
     toolName === "create_view" ? coerceElementsArg(args) : args;
 
@@ -327,7 +328,7 @@ async function executeToolCall(
       }
     }
 
-    return { output, sceneJson: updatedScene }
+    return { output, sceneJson: updatedScene, lastPlan: plan }
   }
 
   toolsUsed.push(toolName);
@@ -370,6 +371,7 @@ interface ToolLoopResult {
   sceneJson: object
   totalInputTokens: number
   totalOutputTokens: number
+  lastPlan: object | null
 }
 
 async function runToolLoop(
@@ -388,6 +390,7 @@ async function runToolLoop(
   let totalInputTokens = 0
   let totalOutputTokens = 0
   let sceneJson = initialScene
+  let lastPlan: object | null = null
 
   while (iterations < MAX_FUNCTION_ITERATIONS) {
     const response = await withRetry(
@@ -447,7 +450,7 @@ async function runToolLoop(
         args = {}
       }
 
-      let result: { output: unknown; sceneJson: object }
+      let result: { output: unknown; sceneJson: object; lastPlan?: object }
       try {
         result = await executeToolCall(toolName, args, sceneJson, toolsUsed, stages, theme, requestId, userId)
       } catch (toolError) {
@@ -457,6 +460,7 @@ async function runToolLoop(
       }
 
       sceneJson = result.sceneJson
+      if (result.lastPlan) lastPlan = result.lastPlan
 
       messages.push({
         role: 'tool',
@@ -468,7 +472,7 @@ async function runToolLoop(
     iterations += 1
   }
 
-  return { reply, sceneJson, totalInputTokens, totalOutputTokens }
+  return { reply, sceneJson, totalInputTokens, totalOutputTokens, lastPlan }
 }
 
 export async function processMessage(
@@ -522,7 +526,7 @@ export async function processMessage(
     const loopResult = await runToolLoop(
       messages, tools, sceneJson, toolsUsed, stages, theme, model, requestId, userId,
     )
-    const { reply, totalInputTokens, totalOutputTokens } = loopResult
+    const { reply, totalInputTokens, totalOutputTokens, lastPlan } = loopResult
     sceneJson = loopResult.sceneJson
 
     stages.push('Placing on canvas...')
@@ -553,6 +557,7 @@ export async function processMessage(
         toolsUsed,
         stages,
         mermaidDiagram: mermaidCode,
+        lastPlan: lastPlan ?? undefined,
       };
     }
 
@@ -564,6 +569,7 @@ export async function processMessage(
       ),
       toolsUsed,
       stages,
+      lastPlan: lastPlan ?? undefined,
     };
   } catch (error) {
     logger.error('groq_error', {
@@ -573,6 +579,36 @@ export async function processMessage(
     });
     throw new Error("AI service error");
   }
+}
+
+export async function runCorrectionPass(
+  issues:           string[],
+  originalPlan:     DiagramPlan,
+  currentSceneJson: object,
+  requestId?:       string,
+  userId?:          string,
+): Promise<ProcessMessageResult | null> {
+  if (issues.length === 0) return null
+
+  const issueList = issues.map((s, i) => `  ${i + 1}. ${s}`).join('\n')
+
+  const correctionPrompt =
+    `The diagram you just drew has these visual problems:\n${issueList}\n\n` +
+    `Fix them by calling plan_diagram again. Specifically:\n` +
+    `- For text overflow: increase the size of affected nodes to "lg" or "xl"\n` +
+    `- For overlapping nodes: use a different layout direction or increase spacing\n` +
+    `- For unreadable labels: shorten the label text (max 20 chars) or increase node size\n` +
+    `Keep all the same nodes and edges — only adjust sizes and layout type if needed.\n` +
+    `Set mode: "replace" to redraw from scratch with the corrections applied.`
+
+  return processMessage(
+    correctionPrompt,
+    [],
+    currentSceneJson,
+    (originalPlan as DiagramPlan & { theme?: DiagramTheme }).theme ?? 'default',
+    requestId,
+    userId,
+  )
 }
 
 export async function processIngest(

@@ -60,7 +60,6 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
 
   const [cycleIdx, setCycleIdx] = useState(0)
 
-  // Cycle loading messages while waiting for AI
   useEffect(() => {
     if (barState !== 'loading' && !ingestLoading) { setCycleIdx(0); return }
     const t = setInterval(() => setCycleIdx(i => (i + 1) % LOADING_CYCLE.length), 2500)
@@ -146,12 +145,10 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-
     if (file.size > 50_000) {
       setIngestError('File too large — keep it under 50KB')
       return
     }
-
     const text = await file.text()
     setIngestContent(text)
     setIngestFilename(file.name)
@@ -230,6 +227,7 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
     setListening(false)
   }
 
+  /* ── Loading state: shimmer bar ── */
   if (barState === 'loading' || ingestLoading) {
     const label = ingestLoading
       ? 'Analysing document...'
@@ -238,12 +236,19 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
         : LOADING_CYCLE[cycleIdx]
 
     return (
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-        <div className="flex items-center gap-2.5 bg-[#111111] border border-white/10
-                        rounded-full px-5 py-3 shadow-2xl">
-          <div className="w-3.5 h-3.5 rounded-full border-2 border-white/15
-                          border-t-white/60 animate-spin flex-shrink-0" />
-          <span className="text-white/45 text-sm whitespace-nowrap">{label}</span>
+      <div
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+        style={{ minWidth: 480, maxWidth: 640, width: 'calc(100vw - 48px)' }}
+      >
+        <div className="relative overflow-hidden rounded-2xl border border-white/[0.08]
+                        bg-zinc-900/90 px-5 py-3.5 backdrop-blur-2xl
+                        shadow-[0_4px_24px_rgba(0,0,0,0.5)]">
+          <div className="absolute inset-0 animate-[shimmer_2s_ease-in-out_infinite]
+                          bg-gradient-to-r from-transparent via-amber-500/[0.06] to-transparent" />
+          <div className="relative flex items-center gap-3">
+            <span className="text-sm leading-none text-amber-400/80">✦</span>
+            <span className="text-sm text-white/50">{label}</span>
+          </div>
         </div>
       </div>
     )
@@ -254,8 +259,9 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
 
   const showChips   = barState === 'focused'
-  const borderColor = (barState === 'focused' || barState === 'typing')
-    ? 'rgba(255,255,255,0.16)'
+  const isFocused   = barState === 'focused' || barState === 'typing'
+  const borderColor = isFocused
+    ? 'rgba(245,158,11,0.35)'
     : 'rgba(255,255,255,0.07)'
 
   const detected = detectContentType(ingestContent, ingestFilename)
@@ -265,14 +271,14 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
       className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2.5"
       style={{ minWidth: 480, maxWidth: 640, width: 'calc(100vw - 48px)' }}
     >
-      {/* Ingest overlay — above chips */}
+      {/* Ingest overlay */}
       {showIngest && (
         <div
-          className="w-full bg-[#111111] border border-white/10 rounded-2xl
-                     p-4 shadow-2xl animate-slide-up"
+          className="w-full rounded-2xl border border-white/[0.1] bg-zinc-900/95
+                     p-4 shadow-[0_4px_24px_rgba(0,0,0,0.5)] backdrop-blur-2xl animate-slide-up"
           onClick={e => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between mb-3">
+          <div className="mb-3 flex items-center justify-between">
             <p className="text-[11px] text-white/40">
               Paste a README, code file, API spec, or any document
             </p>
@@ -285,15 +291,14 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
             value={ingestContent}
             onChange={e => { setIngestContent(e.target.value); setIngestFilename(undefined); setIngestError(null) }}
             placeholder="Paste content here..."
-            className="w-full h-32 bg-white/[0.04] border border-white/[0.08] rounded-xl p-3
-                       text-xs text-white/65 placeholder:text-white/20
-                       outline-none resize-none focus:border-white/15 transition-colors
+            className="w-full h-32 bg-white/[0.06] border border-white/[0.08] rounded-xl p-3
+                       text-xs text-white/70 placeholder:text-white/20
+                       outline-none resize-none focus:border-amber-500/30 transition-colors
                        scrollbar-hide"
           />
 
-          {/* Content-type preview badge */}
           {detected && (
-            <p className="text-[10px] text-white/25 mt-1.5">
+            <p className="mt-1.5 text-[10px] text-white/25">
               Detected: <span className="text-white/45">{detected.label}</span>
               {' → '}
               <span className="text-white/45">{detected.layout} layout</span>
@@ -301,11 +306,11 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
           )}
 
           {ingestError && (
-            <p className="text-[11px] text-red-400/80 mt-1.5">{ingestError}</p>
+            <p className="mt-1.5 text-[11px] text-red-400/80">{ingestError}</p>
           )}
 
-          <div className="flex items-center justify-between mt-3">
-            <label className="text-[11px] text-white/30 hover:text-white/55 cursor-pointer transition-colors">
+          <div className="mt-3 flex items-center justify-between">
+            <label className="cursor-pointer text-[11px] text-white/30 transition-colors hover:text-white/55">
               ↑ Upload file (.md .ts .js .py .json .yaml)
               <input
                 type="file"
@@ -322,9 +327,9 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
               <button
                 onClick={handleIngestSubmit}
                 disabled={!ingestContent.trim() || ingestLoading}
-                className="text-[11px] text-white bg-white/10 hover:bg-white/[0.18]
-                           border border-white/10 rounded-lg px-3 py-1.5
-                           disabled:opacity-30 transition-all duration-150"
+                className="rounded-lg border border-amber-500/30 bg-amber-500/80 px-3 py-1.5
+                           text-[11px] text-white transition-all duration-150
+                           hover:bg-amber-500 disabled:opacity-30"
               >
                 {ingestLoading ? 'Analysing...' : 'Generate diagram'}
               </button>
@@ -333,7 +338,7 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
         </div>
       )}
 
-      {/* Prompt chips — fade in on focus */}
+      {/* Prompt chips */}
       <div
         className="flex gap-2 overflow-x-auto scrollbar-hide w-full px-1 transition-all duration-200"
         style={{
@@ -346,42 +351,45 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
           <button
             key={chip}
             onMouseDown={e => { e.preventDefault(); handleChipClick(chip) }}
-            className="whitespace-nowrap flex-shrink-0 text-[11.5px] text-white/50
-                       hover:text-white/80 bg-white/5 hover:bg-white/10
-                       border border-white/[0.08] hover:border-white/15
-                       rounded-full px-3.5 py-1.5 transition-all duration-150"
+            className="flex-shrink-0 whitespace-nowrap rounded-full border border-white/[0.08]
+                       bg-white/5 px-3.5 py-1.5 text-[11.5px] text-white/50
+                       transition-all duration-150 hover:border-white/15 hover:bg-white/10 hover:text-white/80"
           >
             {chip}
           </button>
         ))}
       </div>
 
-      {/* Main pill bar */}
+      {/* Main pill */}
       <div
-        className={`flex gap-3 bg-[#111111] rounded-full px-4 py-3
-                   shadow-[0_8px_40px_rgba(0,0,0,0.7)] transition-all duration-200 w-full
-                   ${listening ? 'items-center' : 'items-end'}`}
-        style={{ border: `1px solid ${listening ? 'rgba(248,113,113,0.25)' : borderColor}` }}
+        className="flex w-full items-center gap-3 rounded-full bg-zinc-900/90 px-4 py-3
+                   backdrop-blur-2xl transition-all duration-200"
+        style={{
+          border: `1px solid ${listening ? 'rgba(248,113,113,0.25)' : borderColor}`,
+          boxShadow: isFocused
+            ? '0 0 0 2px rgba(245,158,11,0.12), 0 4px 24px rgba(0,0,0,0.5)'
+            : '0 4px 24px rgba(0,0,0,0.5)',
+        }}
       >
         <span
-          className="text-white/25 text-sm leading-5 flex-shrink-0"
+          className={`flex-shrink-0 text-sm leading-5 text-white/25 transition-all
+                      ${barState === 'idle' ? 'animate-[spark-pulse_3s_ease-in-out_infinite]' : ''}`}
           title={isVoiceSupported ? 'Type, speak (mic), or attach a file (📎)' : 'Type a prompt or attach a file (📎)'}
         >✦</span>
 
         <button
           onMouseDown={e => { e.preventDefault(); setShowIngest(v => !v) }}
           title="Diagram from document (paste or upload)"
-          className={`flex-shrink-0 self-center transition-colors duration-150 ${
-            showIngest ? 'text-white/70' : 'text-white/20 hover:text-white/50'
+          className={`flex-shrink-0 transition-colors duration-150 ${
+            showIngest ? 'text-white/70' : 'text-white/40 hover:text-white/70'
           }`}
         >
-          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+          <svg width="14" height="14" viewBox="0 0 13 13" fill="none">
             <path d="M11 6.5L5.5 12a3.5 3.5 0 0 1-4.95-4.95l6-6a2 2 0 0 1 2.83 2.83L4 9.17a.75.75 0 0 1-1.06-1.06L8.5 2.56"
                   stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
 
-        {/* Waveform shown inside pill while listening */}
         {listening ? (
           <div className="flex-1 flex items-center gap-3">
             <div className="flex items-end gap-[3px]" style={{ height: 16 }}>
@@ -407,8 +415,8 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             placeholder="Describe what to draw…"
-            className="flex-1 bg-transparent text-white text-sm placeholder:text-white/25
-                       resize-none outline-none leading-5 overflow-hidden scrollbar-hide"
+            className="flex-1 resize-none overflow-hidden bg-transparent text-sm
+                       text-white placeholder:text-white/25 outline-none leading-5 scrollbar-hide"
             style={{ minHeight: 20, maxHeight: 72 }}
           />
         )}
@@ -421,10 +429,10 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
             }}
             title={listening ? 'Stop listening (click or press Esc)' : 'Speak your prompt'}
             className={`flex-shrink-0 transition-all duration-200 ${
-              listening ? 'text-red-400 scale-110' : 'text-white/20 hover:text-white/55 pb-0.5'
+              listening ? 'scale-110 text-red-400' : 'text-white/40 hover:text-white/70'
             }`}
           >
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <svg width="14" height="14" viewBox="0 0 13 13" fill="none">
               <rect x="4.5" y="1" width="4" height="6" rx="2" stroke="currentColor" strokeWidth="1.2"/>
               <path d="M2 6.5a4.5 4.5 0 0 0 9 0M6.5 11v1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
             </svg>
@@ -434,24 +442,30 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
         <button
           onMouseDown={e => { e.preventDefault(); submit() }}
           disabled={!value.trim()}
-          className="flex-shrink-0 w-7 h-7 rounded-full bg-white flex items-center
-                     justify-center disabled:opacity-20 hover:enabled:bg-white/85
-                     transition-all duration-150"
-          style={{ marginBottom: listening ? 0 : 2 }}
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full
+                     bg-amber-500 transition-all duration-150
+                     hover:enabled:bg-amber-400 disabled:opacity-25"
         >
           <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-            <path d="M5.5 9.5V1.5M1.5 5.5l4-4 4 4" stroke="#000" strokeWidth="1.5"
+            <path d="M5.5 9.5V1.5M1.5 5.5l4-4 4 4" stroke="#fff" strokeWidth="1.5"
                   strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
       </div>
 
-      <p
-        className="text-[10px] text-white/15 transition-opacity duration-200"
+      <div
+        className="flex items-center gap-3 transition-opacity duration-200"
         style={{ opacity: barState === 'idle' && !listening ? 1 : 0 }}
       >
-        ⌘K to focus · Enter to send · Shift+Enter for new line
-      </p>
+        {([['⌘K', 'focus'], ['↵', 'send'], ['⇧↵', 'new line']] as const).map(([key, label]) => (
+          <span key={key} className="flex items-center gap-1">
+            <kbd className="rounded border border-white/[0.08] bg-white/[0.05] px-1.5 py-0.5 font-mono text-[9px] text-white/30">
+              {key}
+            </kbd>
+            <span className="text-[9px] text-white/15">{label}</span>
+          </span>
+        ))}
+      </div>
     </div>
   )
 }

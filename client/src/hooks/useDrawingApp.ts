@@ -4,7 +4,7 @@ import { exportToBlob } from '@excalidraw/excalidraw'
 import { parseMermaidToExcalidraw } from '@excalidraw/mermaid-to-excalidraw'
 import axios from 'axios'
 import * as api from '@/lib/api'
-import { drawingsApi, foldersApi, versionsApi, ingestApi } from '@/lib/api'
+import { drawingsApi, foldersApi, versionsApi, ingestApi, critiqueApi } from '@/lib/api'
 import { sanitizeAppState, sanitizeScene, prepareElementsForCanvas } from '@/lib/scene'
 import type { DrawingFull, Folder, Message, VersionMeta } from '@/lib/types'
 import type { SelectedNode } from '../components/NodePanel'
@@ -156,9 +156,15 @@ export function useDrawingApp() {
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null)
   const [canUndo, setCanUndo] = useState(false)
   const [errorToast, setErrorToast] = useState<string | null>(null)
+  const [autoCorrectEnabled, setAutoCorrectEnabled] = useState<boolean>(() =>
+    localStorage.getItem('ai-drawing-autocorrect') !== 'false'
+  )
+  const [lastCorrected, setLastCorrected] = useState(false)
+  const [isCritiquing, setIsCritiquing] = useState(false)
 
   const prevSceneRef = useRef<object | null>(null)
   const themeRef = useRef(theme)
+  const autoCorrectRef = useRef(autoCorrectEnabled)
 
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null)
   const sceneDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -198,6 +204,10 @@ export function useDrawingApp() {
   useEffect(() => {
     themeRef.current = theme
   }, [theme])
+
+  useEffect(() => {
+    autoCorrectRef.current = autoCorrectEnabled
+  }, [autoCorrectEnabled])
 
   useEffect(() => {
     if (!errorToast) return
@@ -483,6 +493,61 @@ export function useDrawingApp() {
     []
   )
 
+  async function runVisualFeedback(
+    sceneJson:    Record<string, unknown>,
+    originalPlan: object | null,
+  ): Promise<void> {
+    const excalidrawAPI = excalidrawAPIRef.current
+    if (!autoCorrectRef.current || !excalidrawAPI || !originalPlan) return
+
+    const elements = excalidrawAPI.getSceneElements()
+    if (elements.length === 0) return
+
+    setIsCritiquing(true)
+    setLastCorrected(false)
+
+    try {
+      // Wait one frame for Excalidraw to finish rendering
+      await new Promise<void>(r => setTimeout(r, 500))
+
+      const blob = await exportToBlob({
+        elements,
+        appState: {
+          exportBackground:    true,
+          viewBackgroundColor: '#ffffff',
+        } as Parameters<typeof exportToBlob>[0]['appState'],
+        files:            excalidrawAPI.getFiles(),
+        maxWidthOrHeight: 900,
+        quality:          0.55,
+      })
+
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        const reader   = new FileReader()
+        reader.onload  = () => resolve((reader.result as string).split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+
+      const result = await critiqueApi.run(imageBase64, originalPlan, sceneJson)
+
+      if (result.corrected && result.sceneJson) {
+        const newScene = result.sceneJson as Record<string, unknown>
+        setSceneJson(newScene)
+        excalidrawAPI.updateScene({
+          elements: (newScene.elements as never[]) ?? [],
+          appState: {} as never,
+        })
+        excalidrawAPI.scrollToContent()
+        setLastCorrected(true)
+        setTimeout(() => setLastCorrected(false), 4000)
+      }
+    } catch (err) {
+      console.warn('[VISUAL FEEDBACK]', err instanceof Error ? err.message : err)
+    } finally {
+      setIsCritiquing(false)
+    }
+  }
+
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim()
@@ -548,6 +613,10 @@ export function useDrawingApp() {
 
         if (currentDrawingIdRef.current) {
           void autoSaveDrawing(safeScene)
+        }
+
+        if (data.lastPlan) {
+          void runVisualFeedback(safeScene as Record<string, unknown>, data.lastPlan)
         }
       } catch (err: unknown) {
         let content = 'Something went wrong — try again.'
@@ -759,5 +828,13 @@ export function useDrawingApp() {
     restoreVersion,
     currentVersionNumber,
     versionToast,
+    autoCorrectEnabled,
+    setAutoCorrectEnabled: (v: boolean) => {
+      autoCorrectRef.current = v
+      setAutoCorrectEnabled(v)
+      localStorage.setItem('ai-drawing-autocorrect', String(v))
+    },
+    lastCorrected,
+    isCritiquing,
   }
 }
