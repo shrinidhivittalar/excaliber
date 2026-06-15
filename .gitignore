@@ -20,6 +20,7 @@ build/
 *.pem
 CODEBASE.md
 PRESENTATION_NOTES.md
+SECURITY.md
 
 # debug
 npm-debug.log*
