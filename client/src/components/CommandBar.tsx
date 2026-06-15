@@ -37,13 +37,14 @@ function detectContentType(
 }
 
 interface CommandBarProps {
-  isLoading:    boolean
-  loadingStage: string
-  onSubmit:     (message: string) => void
-  onIngest:     (content: string, filename?: string) => Promise<void>
+  isLoading:      boolean
+  loadingStage:   string
+  onSubmit:       (message: string) => void
+  onIngest:       (content: string, filename?: string) => Promise<void>
+  detectedIntent: string
 }
 
-export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: CommandBarProps) {
+export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest, detectedIntent }: CommandBarProps) {
   const [barState, setBarState] = useState<BarState>('idle')
   const [value, setValue]       = useState('')
   const inputRef                = useRef<HTMLTextAreaElement>(null)
@@ -335,6 +336,16 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest }: Comm
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Intent hint pill */}
+      {detectedIntent && (
+        <div className="flex justify-center transition-all duration-200 animate-slide-up">
+          <span className="text-[11px] text-white/50 bg-white/6 border border-white/8
+                           rounded-full px-3 py-1">
+            {detectedIntent}
+          </span>
         </div>
       )}
 

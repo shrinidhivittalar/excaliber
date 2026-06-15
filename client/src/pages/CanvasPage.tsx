@@ -76,6 +76,7 @@ export default function CanvasPage() {
     setAutoCorrectEnabled,
     lastCorrected,
     isCritiquing,
+    detectedIntent,
   } = useDrawingApp()
 
   useEffect(() => {
@@ -223,6 +224,7 @@ export default function CanvasPage() {
           loadingStage={loadingStage}
           onSubmit={sendMessage}
           onIngest={ingestDocument}
+          detectedIntent={detectedIntent}
         />
 
         {isCritiquing && !lastCorrected && (
