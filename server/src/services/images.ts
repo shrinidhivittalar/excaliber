@@ -1,4 +1,5 @@
 import axios from "axios";
+import { logger } from "../lib/logger";
 
 export interface ImageResult {
   url: string;
@@ -69,6 +70,7 @@ export async function searchImages(
       expiresAt: Date.now() + CACHE_TTL_MS,
     });
 
+    logger.info('pexels_result', { query: trimmed, count: results.length });
     return results;
   } catch {
     return [];

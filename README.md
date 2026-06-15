@@ -269,3 +269,27 @@ controls. The preference is stored in localStorage.
 Groq's llama-3.2-11b-vision-preview is multimodal and available on the
 same free tier as the text models. The GROQ_API_KEY already configured
 in server/.env covers both the drawing AI and the visual critique.
+
+## Phase 9.0.1 — Intent Detection + Real Image Fix
+
+### Intent detection
+The AI now recognises five distinct drawing intents from how you phrase
+your request and changes its output accordingly:
+
+  "show me [X]"        → fetches a real photo from Pexels, annotates it
+  "wireframe [X]"      → minimal theme, rectangles only, dashed edges
+  "system design [X]"  → architecture layout, grouped by infrastructure layer
+  "annotate [X]"       → adds labels to the existing canvas without redrawing
+  "refine" / "clean up"→ improves sizing and layout of the existing canvas
+
+A small pill appears in the command bar briefly when an intent is detected,
+confirming the AI understood what kind of output you want.
+
+### Real image fix
+fetch_images now triggers reliably for any physical, biological, anatomical,
+geographic, or real-world visual subject. The tool description and system
+prompt rules were made more explicit — the AI calls fetch_images before
+plan_diagram for real-world subjects rather than defaulting to boxes.
+
+Requires PEXELS_API_KEY to be set in server/.env. Get a free key at
+https://www.pexels.com/api (200 requests/hour on the free plan).

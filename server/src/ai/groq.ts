@@ -114,7 +114,12 @@ const FETCH_IMAGES_TOOL: ChatCompletionTool = {
   function: {
     name: "fetch_images",
     description:
-      "Search for real photos to embed in the drawing. Use for visual/real-world topics.",
+      'MUST call before plan_diagram for any physical, biological, anatomical, ' +
+      'geographic, or real-world visual subject. ' +
+      'Triggers: animals, organs, body parts, plants, food, landmarks, places, ' +
+      'people, natural phenomena, space objects, vehicles, buildings, objects. ' +
+      'Skip ONLY for abstract/technical topics: flowcharts, code, org charts, ' +
+      'timelines, software architecture. When in doubt — call fetch_images first.',
     parameters: {
       type: "object",
       properties: {
