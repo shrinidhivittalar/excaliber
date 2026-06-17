@@ -5,6 +5,7 @@ import { parseMermaidToExcalidraw } from '@excalidraw/mermaid-to-excalidraw'
 import axios from 'axios'
 import * as api from '@/lib/api'
 import { drawingsApi, foldersApi, versionsApi, ingestApi, critiqueApi } from '@/lib/api'
+import { detectIntent } from '../lib/detectIntent'
 import { sanitizeAppState, sanitizeScene, prepareElementsForCanvas } from '@/lib/scene'
 import type { DrawingFull, Folder, Message, VersionMeta } from '@/lib/types'
 import type { SelectedNode } from '../components/NodePanel'
@@ -161,6 +162,7 @@ export function useDrawingApp() {
   )
   const [lastCorrected, setLastCorrected] = useState(false)
   const [isCritiquing, setIsCritiquing] = useState(false)
+  const [detectedIntent, setDetectedIntent] = useState('')
 
   const prevSceneRef = useRef<object | null>(null)
   const themeRef = useRef(theme)
@@ -565,12 +567,20 @@ export function useDrawingApp() {
         nextMessages = [...nextMessages, warningMessage]
       }
 
+      const intentResult = detectIntent(trimmed)
+      const effectiveTheme = intentResult.theme ?? themeRef.current
+
+      if (intentResult.intent !== 'default') {
+        setDetectedIntent(`${intentResult.emoji} ${intentResult.label}`)
+        setTimeout(() => setDetectedIntent(''), 3000)
+      }
+
       setMessages(nextMessages)
       setIsLoading(true)
       saveToStorage(nextMessages, sceneJsonRef.current)
 
       try {
-        const data = await api.sendMessage(trimmed, nextMessages, sceneJsonRef.current, themeRef.current)
+        const data = await api.sendMessage(trimmed, nextMessages, sceneJsonRef.current, effectiveTheme)
 
         if (data.stages?.length) {
           for (const stage of data.stages) {
@@ -836,5 +846,6 @@ export function useDrawingApp() {
     },
     lastCorrected,
     isCritiquing,
+    detectedIntent,
   }
 }

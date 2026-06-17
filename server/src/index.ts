@@ -13,6 +13,7 @@ import rateLimit from "express-rate-limit";
 import { requestIdMiddleware } from "./middleware/requestId";
 import { connectDB } from "./db/connect";
 import { initMcp } from "./mcp/client";
+import { logger } from "./lib/logger";
 import chatRoutes from "./routes/chat";
 import clearRoutes from "./routes/clear";
 import imagesRoutes from "./routes/images";
@@ -85,6 +86,12 @@ app.use("/api/critique", critiqueRoutes);
 async function startServer() {
   await connectDB();
   await initMcp();
+
+  if (!process.env.PEXELS_API_KEY) {
+    logger.warn('pexels_missing',
+      { message: 'PEXELS_API_KEY not set — fetch_images will return empty arrays' }
+    )
+  }
 
   app.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
