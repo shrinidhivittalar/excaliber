@@ -20,7 +20,7 @@ interface PexelsPhoto {
   alt: string;
   width: number;
   height: number;
-  src: { large: string };
+  src: { medium: string };
 }
 
 interface PexelsSearchResponse {
@@ -59,7 +59,7 @@ export async function searchImages(
     );
 
     const results: ImageResult[] = (data.photos ?? []).map((photo) => ({
-      url: photo.src.large,
+      url: photo.src.medium,
       alt: photo.alt ?? trimmed,
       width: photo.width,
       height: photo.height,
@@ -76,3 +76,4 @@ export async function searchImages(
     return [];
   }
 }
+

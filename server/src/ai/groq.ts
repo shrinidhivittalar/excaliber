@@ -27,16 +27,68 @@ export interface Message {
 }
 
 export interface ProcessMessageResult {
-  reply: string;
-  sceneJson: object;
-  toolsUsed: string[];
-  stages: string[];
-  mermaidDiagram?: string;
-  lastPlan?: object;
+  reply:           string
+  sceneJson:       object
+  toolsUsed:       string[]
+  stages:          string[]
+  mermaidDiagram?: string
+  lastPlan?:       object
 }
 
 const MAX_FUNCTION_ITERATIONS = 10;
 const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+
+type AiErrorCode = 'RATE_LIMIT' | 'TOOL_USE_FAILED' | 'INTERNAL'
+
+export class AiServiceError extends Error {
+  constructor(
+    public readonly code: AiErrorCode,
+    public readonly userMessage: string,
+    public readonly statusCode: number,
+    message = userMessage
+  ) {
+    super(message)
+    this.name = 'AiServiceError'
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function classifyAiError(error: unknown): AiServiceError {
+  const message = getErrorMessage(error)
+  const lower = message.toLowerCase()
+  const retryMatch = message.match(/try again in ([^".]+)/i)
+
+  if (
+    lower.includes('rate_limit_exceeded') ||
+    lower.includes('rate limit') ||
+    lower.includes('tokens per day') ||
+    lower.includes('tpd')
+  ) {
+    const wait = retryMatch?.[1]?.trim()
+    return new AiServiceError(
+      'RATE_LIMIT',
+      wait
+        ? `Groq daily token limit reached. Try again in ${wait}.`
+        : 'Groq rate limit reached. Wait a moment and try again.',
+      429,
+      message
+    )
+  }
+
+  if (lower.includes('tool_use_failed')) {
+    return new AiServiceError(
+      'TOOL_USE_FAILED',
+      'The AI produced an invalid tool call. Try rephrasing the drawing request.',
+      502,
+      message
+    )
+  }
+
+  return new AiServiceError('INTERNAL', 'AI service error', 500, message)
+}
 
 const PLAN_DIAGRAM_TOOL: ChatCompletionTool = {
   type: 'function',
@@ -249,14 +301,14 @@ function extractSceneFromValue(
 }
 
 async function executeToolCall(
-  toolName: string,
-  args: Record<string, unknown>,
+  toolName:  string,
+  args:      Record<string, unknown>,
   sceneJson: object,
   toolsUsed: string[],
-  stages: string[],
-  theme: DiagramTheme,
+  stages:    string[],
+  theme:     DiagramTheme,
   requestId?: string,
-  userId?: string,
+  userId?:    string,
 ): Promise<{ output: unknown; sceneJson: object; lastPlan?: object }> {
   const normalizedArgs =
     toolName === "create_view" ? coerceElementsArg(args) : args;
@@ -344,9 +396,10 @@ async function executeToolCall(
       typeof normalizedArgs.count === "number"
         ? Math.min(Math.max(normalizedArgs.count, 1), 3)
         : 3;
-    output = await searchImages(query, count);
-    const imageResults = Array.isArray(output) ? output : [];
-    logger.info('images_fetched', { requestId, userId, count: imageResults.length, query });
+    stages.push('Searching for image...')
+    const images = await searchImages(query, count);
+    output = images;
+    logger.info('images_fetched', { requestId, userId, count: images.length, query });
   } else {
     output = await callMcpTool(toolName, normalizedArgs);
 
@@ -379,16 +432,24 @@ interface ToolLoopResult {
   lastPlan: object | null
 }
 
+function isToolError(output: unknown): boolean {
+  return Boolean(
+    output &&
+    typeof output === 'object' &&
+    'error' in output
+  )
+}
+
 async function runToolLoop(
-  messages: ChatCompletionMessageParam[],
-  tools: ChatCompletionTool[],
+  messages:     ChatCompletionMessageParam[],
+  tools:        ChatCompletionTool[],
   initialScene: object,
-  toolsUsed: string[],
-  stages: string[],
-  theme: DiagramTheme,
-  model: string,
-  requestId?: string,
-  userId?: string,
+  toolsUsed:    string[],
+  stages:       string[],
+  theme:        DiagramTheme,
+  model:        string,
+  requestId?:   string,
+  userId?:      string,
 ): Promise<ToolLoopResult> {
   let reply = ''
   let iterations = 0
@@ -405,6 +466,7 @@ async function runToolLoop(
           messages,
           tools,
           tool_choice: 'auto',
+          parallel_tool_calls: false,
           temperature: 0.7,
         }),
         25_000,
@@ -413,9 +475,15 @@ async function runToolLoop(
       {
         maxAttempts: 3,
         baseDelayMs: 1_000,
-        shouldRetry: (err) => {
+        shouldRetry: (err, attempt) => {
           if (err instanceof Error) {
             const msg = err.message.toLowerCase()
+            if (msg.includes('rate_limit_exceeded') || msg.includes('tokens per day')) {
+              return false
+            }
+            if (msg.includes('tool_use_failed')) {
+              return attempt === 1
+            }
             return msg.includes('rate') || msg.includes('timeout') || msg.includes('503')
           }
           return false
@@ -472,6 +540,16 @@ async function runToolLoop(
         tool_call_id: toolCall.id,
         content: JSON.stringify(result.output),
       })
+
+      if (toolName === 'plan_diagram' && !isToolError(result.output)) {
+        return {
+          reply: "I've updated the drawing on the canvas.",
+          sceneJson,
+          totalInputTokens,
+          totalOutputTokens,
+          lastPlan,
+        }
+      }
     }
 
     iterations += 1
@@ -577,12 +655,14 @@ export async function processMessage(
       lastPlan: lastPlan ?? undefined,
     };
   } catch (error) {
+    const aiError = classifyAiError(error)
     logger.error('groq_error', {
       requestId,
       userId,
-      message: error instanceof Error ? error.message : String(error),
+      errorCode: aiError.code,
+      message: aiError.message,
     });
-    throw new Error("AI service error");
+    throw aiError;
   }
 }
 
@@ -682,11 +762,13 @@ export async function processIngest(
       stages,
     }
   } catch (error) {
+    const aiError = classifyAiError(error)
     logger.error('ingest_error', {
       requestId,
       userId,
-      message: error instanceof Error ? error.message : String(error),
+      errorCode: aiError.code,
+      message: aiError.message,
     })
-    throw new Error('AI service error')
+    throw aiError
   }
 }

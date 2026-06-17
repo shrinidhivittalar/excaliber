@@ -162,12 +162,12 @@ export const sendMessage = async (
     theme,
   })
   return response.data as {
-    reply: string
-    sceneJson: object
-    toolsUsed: string[]
-    stages: string[]
+    reply:           string
+    sceneJson:       object
+    toolsUsed:       string[]
+    stages:          string[]
     mermaidDiagram?: string
-    lastPlan?: object
+    lastPlan?:       object
   }
 }
 

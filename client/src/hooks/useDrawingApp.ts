@@ -615,6 +615,7 @@ export function useDrawingApp() {
         setCanUndo(true)
         setSceneJson(safeScene)
         saveToStorage(updatedMessages, safeScene)
+
         try {
           applySceneToCanvas(excalidrawAPIRef.current, safeScene)
         } catch (canvasError) {

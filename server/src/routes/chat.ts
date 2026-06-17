@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { processMessage } from "../ai/groq";
+import { AiServiceError, processMessage } from "../ai/groq";
 import { logger } from "../lib/logger";
 import { withTimeout } from "../lib/retry";
 import { requireAuth } from "../middleware/auth";
@@ -70,8 +70,25 @@ router.post("/", requireAuth, userRateLimit, async (req, res) => {
       durationMs: Date.now() - startTime,
       toolsUsed: result.toolsUsed,
     });
-    res.json(result);
+    res.json({
+      reply:     result.reply,
+      sceneJson: result.sceneJson,
+      toolsUsed: result.toolsUsed,
+      stages:    result.stages,
+    });
   } catch (err) {
+    if (err instanceof AiServiceError) {
+      logger.error('chat_error', {
+        requestId: req.requestId,
+        userId: req.userId,
+        errorCode: err.code,
+        message: err.message,
+      });
+
+      res.status(err.statusCode).json({ error: err.userMessage });
+      return;
+    }
+
     const message = err instanceof Error ? err.message : 'Unexpected error'
     const isTimeout  = message.includes('timed out')
     const isRateLimit = message.toLowerCase().includes('rate')
@@ -89,7 +106,7 @@ router.post("/", requireAuth, userRateLimit, async (req, res) => {
       message,
     });
 
-    res.status(isTimeout || isRateLimit ? 503 : 500).json({ error: userMessage });
+    res.status(isRateLimit ? 429 : isTimeout ? 503 : 500).json({ error: userMessage });
   }
 });
 

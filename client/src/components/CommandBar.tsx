@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import { Save, Share2, Loader2, Undo2, HelpCircle, Clock, Copy, Check } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 type BarState = 'idle' | 'focused' | 'typing' | 'loading'
 
@@ -37,18 +39,38 @@ function detectContentType(
 }
 
 interface CommandBarProps {
-  isLoading:      boolean
-  loadingStage:   string
-  onSubmit:       (message: string) => void
-  onIngest:       (content: string, filename?: string) => Promise<void>
-  detectedIntent: string
+  isLoading:          boolean
+  loadingStage:       string
+  onSubmit:           (message: string) => void
+  onIngest:           (content: string, filename?: string) => Promise<void>
+  detectedIntent:     string
+  // action bar props
+  isSaving:           boolean
+  onSave:             () => void
+  currentDrawingId:   string | null
+  onShare:            () => void
+  canUndo:            boolean
+  onUndo:             () => void
+  showHistoryToggle:  boolean
+  historyOpen:        boolean
+  onHistoryToggle:    () => void
+  copied:             boolean
+  onCopyPng:          () => void
+  autoCorrect:        boolean
+  onToggleAutoCorrect: () => void
 }
 
-export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest, detectedIntent }: CommandBarProps) {
-  const [barState, setBarState] = useState<BarState>('idle')
-  const [value, setValue]       = useState('')
-  const inputRef                = useRef<HTMLTextAreaElement>(null)
-  const prevLoading             = useRef(false)
+export function CommandBar({
+  isLoading, loadingStage, onSubmit, onIngest, detectedIntent,
+  isSaving, onSave, currentDrawingId, onShare,
+  canUndo, onUndo, showHistoryToggle, historyOpen, onHistoryToggle,
+  copied, onCopyPng, autoCorrect, onToggleAutoCorrect,
+}: CommandBarProps) {
+  const [barState, setBarState]           = useState<BarState>('idle')
+  const [value, setValue]                 = useState('')
+  const [containerHovered, setContainerHovered] = useState(false)
+  const inputRef                          = useRef<HTMLTextAreaElement>(null)
+  const prevLoading                       = useRef(false)
 
   const [showIngest,     setShowIngest]     = useState(false)
   const [ingestContent,  setIngestContent]  = useState('')
@@ -267,10 +289,14 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest, detect
 
   const detected = detectContentType(ingestContent, ingestFilename)
 
+  const showActionBar = containerHovered || isFocused
+
   return (
     <div
       className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2.5"
       style={{ minWidth: 480, maxWidth: 640, width: 'calc(100vw - 48px)' }}
+      onMouseEnter={() => setContainerHovered(true)}
+      onMouseLeave={() => setContainerHovered(false)}
     >
       {/* Ingest overlay */}
       {showIngest && (
@@ -464,18 +490,115 @@ export function CommandBar({ isLoading, loadingStage, onSubmit, onIngest, detect
         </button>
       </div>
 
+      {/* Action bar — fades in below on hover, same pattern as top pill */}
       <div
-        className="flex items-center gap-3 transition-opacity duration-200"
-        style={{ opacity: barState === 'idle' && !listening ? 1 : 0 }}
+        className="flex items-center gap-0.5 rounded-full border border-white/[0.06]
+                   bg-zinc-900/75 backdrop-blur-xl px-2 py-1
+                   shadow-[0_2px_16px_rgba(0,0,0,0.4)]"
+        style={{
+          opacity:         showActionBar ? 1 : 0,
+          transform:       `translateY(${showActionBar ? '0px' : '-4px'})`,
+          pointerEvents:   showActionBar ? 'auto' : 'none',
+          transition:      'opacity 140ms ease, transform 140ms ease',
+          transitionDelay: showActionBar ? '60ms' : '0ms',
+        }}
       >
-        {([['⌘K', 'focus'], ['↵', 'send'], ['⇧↵', 'new line']] as const).map(([key, label]) => (
-          <span key={key} className="flex items-center gap-1">
-            <kbd className="rounded border border-white/[0.08] bg-white/[0.05] px-1.5 py-0.5 font-mono text-[9px] text-white/30">
-              {key}
-            </kbd>
-            <span className="text-[9px] text-white/15">{label}</span>
-          </span>
-        ))}
+        {canUndo && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" onClick={onUndo} aria-label="Undo last AI action"
+                className="flex h-7 w-7 items-center justify-center rounded-full
+                           text-white/45 hover:bg-white/10 hover:text-white/80 transition-all duration-150">
+                <Undo2 size={13} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">Undo last AI action</TooltipContent>
+          </Tooltip>
+        )}
+
+        {showHistoryToggle && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" onClick={onHistoryToggle} aria-label="Conversation history"
+                className={`flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150 ${
+                  historyOpen ? 'bg-amber-500/20 text-amber-300' : 'text-white/45 hover:bg-white/10 hover:text-white/80'
+                }`}>
+                <Clock size={13} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">Conversation history</TooltipContent>
+          </Tooltip>
+        )}
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" onClick={onCopyPng} aria-label="Copy canvas as PNG"
+              className="flex h-7 w-7 items-center justify-center rounded-full
+                         text-white/45 hover:bg-white/10 hover:text-white/80 transition-all duration-150">
+              {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs">Copy canvas as PNG</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" onClick={onSave} aria-label="Save"
+              className="flex h-7 w-7 items-center justify-center rounded-full
+                         text-white/45 hover:bg-white/10 hover:text-white/80 transition-all duration-150">
+              {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs">Save ⌘S</TooltipContent>
+        </Tooltip>
+
+        {currentDrawingId && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" onClick={onShare} aria-label="Share drawing"
+                className="flex h-7 w-7 items-center justify-center rounded-full
+                           text-white/45 hover:bg-white/10 hover:text-white/80 transition-all duration-150">
+                <Share2 size={13} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">Share drawing</TooltipContent>
+          </Tooltip>
+        )}
+
+        <div className="mx-0.5 h-3.5 w-px shrink-0 bg-white/[0.08]" />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" onClick={onToggleAutoCorrect} aria-label="Toggle auto-correct"
+              className={`flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150 ${
+                autoCorrect ? 'bg-amber-500/20 text-amber-300' : 'text-white/30 hover:bg-white/10 hover:text-white/60'
+              }`}>
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                <path d="M1 6.5C1 6.5 3 2.5 6.5 2.5S12 6.5 12 6.5 10 10.5 6.5 10.5 1 6.5 1 6.5Z"
+                      stroke="currentColor" strokeWidth="1.2"/>
+                <circle cx="6.5" cy="6.5" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
+              </svg>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs">
+            {autoCorrect ? 'Auto-correct ON' : 'Auto-correct OFF'}
+          </TooltipContent>
+        </Tooltip>
+
+        <div className="mx-0.5 h-3.5 w-px shrink-0 bg-white/[0.08]" />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" aria-label="Help"
+              className="flex h-7 w-7 items-center justify-center rounded-full
+                         text-white/30 hover:bg-white/10 hover:text-white/65 transition-all duration-150">
+              <HelpCircle size={13} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-[200px] text-center text-xs">
+            You can also manually edit the canvas — changes are saved automatically
+          </TooltipContent>
+        </Tooltip>
       </div>
     </div>
   )

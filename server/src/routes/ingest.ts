@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { requireAuth } from '../middleware/auth'
 import { userRateLimit } from '../middleware/userRateLimit'
-import { processIngest } from '../ai/groq'
+import { AiServiceError, processIngest } from '../ai/groq'
 import { logger } from '../lib/logger'
 import { withTimeout } from '../lib/retry'
 
@@ -56,6 +56,17 @@ router.post('/', requireAuth, userRateLimit, async (req, res) => {
 
     res.json(result)
   } catch (err) {
+    if (err instanceof AiServiceError) {
+      logger.error('ingest_error', {
+        requestId: req.requestId,
+        userId:    req.userId,
+        errorCode: err.code,
+        message:   err.message,
+      })
+
+      return res.status(err.statusCode).json({ error: err.userMessage })
+    }
+
     const message = err instanceof Error ? err.message : 'Unexpected error'
     const isTimeout = message.includes('timed out')
 

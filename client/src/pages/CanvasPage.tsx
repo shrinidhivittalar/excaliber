@@ -225,6 +225,19 @@ export default function CanvasPage() {
           onSubmit={sendMessage}
           onIngest={ingestDocument}
           detectedIntent={detectedIntent}
+          isSaving={isSaving}
+          onSave={() => void saveDrawing()}
+          currentDrawingId={currentDrawingId}
+          onShare={() => void shareDrawing()}
+          canUndo={canUndo}
+          onUndo={undoLastAiAction}
+          showHistoryToggle={messages.length > 0}
+          historyOpen={historyOpen}
+          onHistoryToggle={() => setHistoryOpen(v => !v)}
+          copied={copied}
+          onCopyPng={copyAsPng}
+          autoCorrect={autoCorrectEnabled}
+          onToggleAutoCorrect={() => setAutoCorrectEnabled(!autoCorrectEnabled)}
         />
 
         {isCritiquing && !lastCorrected && (
