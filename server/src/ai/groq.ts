@@ -2,6 +2,7 @@ import Groq from "groq-sdk";
 import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
+  ChatCompletionToolChoiceOption,
 } from "groq-sdk/resources/chat/completions";
 import { callMcpTool, listMcpTools } from "../mcp/client";
 import { searchImages } from "../services/images";
@@ -13,7 +14,13 @@ import {
   extractCheckpointId,
   parseElementsJson,
 } from "./scene";
-import { SYSTEM_PROMPT, INGEST_PROMPT } from "./systemPrompt";
+import { INGEST_PROMPT } from "./systemPrompt";
+import { forceTool, TOOL_CHOICE_AUTO } from "./toolChoice";
+import { PLAN_DIAGRAM_TOOL } from './tools';
+import { requestRepair } from './repair';
+import { checkCompleteness } from './completeness';
+import { classifyRequest } from './classify';
+import { composeSystemPrompt } from './promptComposer';
 import { planToExcalidrawElements, LayoutError } from "./layout";
 import type { DiagramPlan } from "./layout/types";
 import type { DiagramTheme } from "./layout/themes";
@@ -33,6 +40,7 @@ export interface ProcessMessageResult {
   stages:          string[]
   mermaidDiagram?: string
   lastPlan?:       object
+  intent?:         string
 }
 
 const MAX_FUNCTION_ITERATIONS = 10;
@@ -88,77 +96,6 @@ function classifyAiError(error: unknown): AiServiceError {
   }
 
   return new AiServiceError('INTERNAL', 'AI service error', 500, message)
-}
-
-const PLAN_DIAGRAM_TOOL: ChatCompletionTool = {
-  type: 'function',
-  function: {
-    name: 'plan_diagram',
-    description: 'Plan a diagram semantically. Server handles all layout and positioning.',
-    parameters: {
-      type: 'object',
-      properties: {
-        layout: {
-          type: 'string',
-          enum: ['flowchart', 'hierarchy', 'circular', 'comparison', 'timeline', 'mindmap', 'freeform'],
-          description: 'Layout algorithm to use',
-        },
-        title: { type: 'string', description: 'Optional diagram title' },
-        nodes: {
-          type: 'array',
-          description: 'All entities to draw. MUST include every mentioned entity.',
-          items: {
-            type: 'object',
-            required: ['id', 'label', 'shape'],
-            properties: {
-              id: { type: 'string' },
-              label: { type: 'string' },
-              shape: { type: 'string', enum: ['rectangle', 'ellipse', 'diamond', 'text'] },
-              size: { type: 'string', enum: ['xs', 'sm', 'md', 'lg', 'xl'] },
-              group: { type: 'string' },
-              sublabel: { type: 'string' },
-              emphasis: { type: 'boolean' },
-            },
-          },
-        },
-        edges: {
-          type: 'array',
-          items: {
-            type: 'object',
-            required: ['from', 'to'],
-            properties: {
-              from: { type: 'string' },
-              to: { type: 'string' },
-              label: { type: 'string' },
-              style: { type: 'string', enum: ['solid', 'dashed', 'dotted'] },
-              bidirectional: { type: 'boolean' },
-            },
-          },
-        },
-        groups: {
-          type: 'array',
-          items: {
-            type: 'object',
-            required: ['id', 'label'],
-            properties: {
-              id: { type: 'string' },
-              label: { type: 'string' },
-              color: { type: 'string' },
-            },
-          },
-        },
-        direction: { type: 'string', enum: ['LR', 'TB'] },
-        mode: {
-          type: 'string',
-          enum: ['replace', 'merge'],
-          description:
-            '"merge" when the canvas already has nodes and the user wants to add or change something. ' +
-            '"replace" for a fresh drawing (default).',
-        },
-      },
-      required: ['layout', 'nodes'],
-    },
-  },
 }
 
 const FETCH_IMAGES_TOOL: ChatCompletionTool = {
@@ -300,15 +237,22 @@ function extractSceneFromValue(
   return null;
 }
 
+interface RepairCtx {
+  userMessage:      string
+  composedPrompt:   string
+  requiredEntities: string[]
+}
+
 async function executeToolCall(
-  toolName:  string,
-  args:      Record<string, unknown>,
-  sceneJson: object,
-  toolsUsed: string[],
-  stages:    string[],
-  theme:     DiagramTheme,
+  toolName:   string,
+  args:       Record<string, unknown>,
+  sceneJson:  object,
+  toolsUsed:  string[],
+  stages:     string[],
+  theme:      DiagramTheme,
   requestId?: string,
   userId?:    string,
+  repairCtx?: RepairCtx,
 ): Promise<{ output: unknown; sceneJson: object; lastPlan?: object }> {
   const normalizedArgs =
     toolName === "create_view" ? coerceElementsArg(args) : args;
@@ -335,13 +279,94 @@ async function executeToolCall(
       stages.push(`Routing ${plan.edges!.length} connection${plan.edges!.length !== 1 ? 's' : ''}...`)
     }
 
-    try {
-      const currentElements =
-        (sceneJson as Record<string, unknown>).elements as unknown[] | undefined
-      const planWithTheme: DiagramPlan = { ...plan, theme }
-      const elements = planToExcalidrawElements(planWithTheme, currentElements)
-      logger.info('plan_diagram_elements', { requestId, userId, nodeCount: elements.length })
+    const currentElements =
+      (sceneJson as Record<string, unknown>).elements as unknown[] | undefined
 
+    const hints: Record<string, string> = {
+      validation:    'The plan structure was invalid. Simplify the diagram or reduce the number of nodes.',
+      layout:        'The layout algorithm failed. Try a different layout type or fewer nodes.',
+      serialization: 'The drawing could not be rendered. Try rephrasing your request.',
+      unknown:       'An unexpected error occurred. Try rephrasing your request.',
+    }
+
+    let currentPlan = plan
+    let elements!: unknown[]
+    let repairAttempt = 1
+
+    while (true) {
+      try {
+        const planWithTheme: DiagramPlan = { ...currentPlan, theme }
+        elements = planToExcalidrawElements(planWithTheme, currentElements)
+        break
+      } catch (planError) {
+        const isLayoutError = planError instanceof LayoutError
+        const stage  = isLayoutError ? planError.stage : 'unknown'
+        const detail = isLayoutError
+          ? (planError.detail ?? planError.message)
+          : planError instanceof Error ? planError.message : 'Unexpected error'
+
+        logger.error('plan_diagram_error', {
+          requestId, userId, message: detail,
+          layout: currentPlan.layout, nodeCount: currentPlan.nodes?.length ?? 0, stage,
+        })
+
+        if (repairCtx) {
+          stages.push('Repairing diagram...')
+          const repaired = await requestRepair({
+            originalUserMessage: repairCtx.userMessage,
+            systemPrompt:        repairCtx.composedPrompt,
+            failedPlanRaw:       currentPlan,
+            problems:            [detail],
+            attempt:             repairAttempt,
+            requestId, userId,
+          })
+
+          if (repaired) {
+            currentPlan = repaired
+            repairAttempt++
+            continue
+          }
+        }
+
+        output = {
+          error:       repairCtx ? 'Could not produce a valid diagram after correction attempts.' : 'plan_diagram failed',
+          stage,
+          detail,
+          planSummary: { layout: currentPlan.layout, nodeCount: currentPlan.nodes?.length ?? 0 },
+          hint:        hints[stage] ?? hints.unknown,
+        }
+        return { output, sceneJson: updatedScene }
+      }
+    }
+
+    // Stage 6 — completeness check before render
+    if (repairCtx && repairCtx.requiredEntities.length > 0) {
+      const missing = checkCompleteness(currentPlan, repairCtx.requiredEntities)
+      if (missing.length > 0) {
+        const repaired = await requestRepair({
+          originalUserMessage: repairCtx.userMessage,
+          systemPrompt:        repairCtx.composedPrompt,
+          failedPlanRaw:       currentPlan,
+          problems:            [`Missing required entities as nodes: ${missing.join(', ')}`],
+          attempt:             repairAttempt,
+          requestId, userId,
+        })
+        logger.info('completeness_gap', { requestId, userId, missing, resolved: !!repaired })
+        if (repaired) {
+          try {
+            const repairedElements = planToExcalidrawElements({ ...repaired, theme }, currentElements)
+            elements    = repairedElements
+            currentPlan = repaired
+          } catch {
+            logger.warn('completeness_repair_invalid', { requestId, userId })
+          }
+        }
+      }
+    }
+
+    logger.info('plan_diagram_elements', { requestId, userId, nodeCount: elements.length })
+
+    try {
       const elementsJson = JSON.stringify(elements)
       const mcpResult = await callMcpTool('create_view', { elements: elementsJson })
       output = mcpResult
@@ -353,39 +378,15 @@ async function executeToolCall(
         updatedScene,
         checkpoint
       )
-    } catch (planError) {
-      const isLayoutError = planError instanceof LayoutError
-      const stage = isLayoutError ? planError.stage : 'unknown'
-      const detail = isLayoutError
-        ? (planError.detail ?? planError.message)
-        : planError instanceof Error ? planError.message : 'Unexpected error'
-
-      logger.error('plan_diagram_error', {
-        requestId,
-        userId,
-        message: detail,
-        layout: plan.layout,
-        nodeCount: plan.nodes?.length ?? 0,
-        stage,
+    } catch (mcpErr) {
+      logger.error('create_view_failed', {
+        requestId, userId,
+        message: mcpErr instanceof Error ? mcpErr.message : String(mcpErr),
       })
-
-      const hints: Record<string, string> = {
-        validation: 'The plan structure was invalid. Simplify the diagram or reduce the number of nodes.',
-        layout: 'The layout algorithm failed. Try a different layout type or fewer nodes.',
-        serialization: 'The drawing could not be rendered. Try rephrasing your request.',
-        unknown: 'An unexpected error occurred. Try rephrasing your request.',
-      }
-
-      output = {
-        error: 'plan_diagram failed',
-        stage,
-        detail,
-        planSummary: { layout: plan.layout, nodeCount: plan.nodes?.length ?? 0 },
-        hint: hints[stage] ?? hints.unknown,
-      }
+      output = { ok: true, note: 'canvas_render_unavailable' }
     }
 
-    return { output, sceneJson: updatedScene, lastPlan: plan }
+    return { output, sceneJson: updatedScene, lastPlan: currentPlan }
   }
 
   toolsUsed.push(toolName);
@@ -441,15 +442,18 @@ function isToolError(output: unknown): boolean {
 }
 
 async function runToolLoop(
-  messages:     ChatCompletionMessageParam[],
-  tools:        ChatCompletionTool[],
-  initialScene: object,
-  toolsUsed:    string[],
-  stages:       string[],
-  theme:        DiagramTheme,
-  model:        string,
-  requestId?:   string,
-  userId?:      string,
+  messages:           ChatCompletionMessageParam[],
+  tools:              ChatCompletionTool[],
+  initialScene:       object,
+  toolsUsed:          string[],
+  stages:             string[],
+  theme:              DiagramTheme,
+  model:              string,
+  requestId?:            string,
+  userId?:               string,
+  initialToolChoice?:    ChatCompletionToolChoiceOption,
+  forcePlanAfterImages?: boolean,
+  repairCtx?:            RepairCtx,
 ): Promise<ToolLoopResult> {
   let reply = ''
   let iterations = 0
@@ -457,15 +461,20 @@ async function runToolLoop(
   let totalOutputTokens = 0
   let sceneJson = initialScene
   let lastPlan: object | null = null
+  let nextForcedChoice: ChatCompletionToolChoiceOption | null = null
 
   while (iterations < MAX_FUNCTION_ITERATIONS) {
+    const toolChoice = nextForcedChoice
+      ?? (iterations === 0 ? (initialToolChoice ?? TOOL_CHOICE_AUTO) : TOOL_CHOICE_AUTO)
+    nextForcedChoice = null
+
     const response = await withRetry(
       () => withTimeout(
         () => getGroq().chat.completions.create({
           model,
           messages,
           tools,
-          tool_choice: 'auto',
+          tool_choice: toolChoice,
           parallel_tool_calls: false,
           temperature: 0.7,
         }),
@@ -499,8 +508,19 @@ async function runToolLoop(
     const assistantMessage = response.choices[0]?.message
     if (!assistantMessage) break
 
+    const forcedToolName =
+      iterations === 0 &&
+      initialToolChoice &&
+      typeof initialToolChoice === 'object' &&
+      initialToolChoice.type === 'function'
+        ? initialToolChoice.function.name
+        : null
+
     const toolCalls = assistantMessage.tool_calls
     if (!toolCalls?.length) {
+      if (forcedToolName) {
+        logger.error('tool_choice_ignored', { requestId, userId, forcedTool: forcedToolName })
+      }
       reply = assistantMessage.content?.trim() ?? ''
       break
     }
@@ -525,7 +545,7 @@ async function runToolLoop(
 
       let result: { output: unknown; sceneJson: object; lastPlan?: object }
       try {
-        result = await executeToolCall(toolName, args, sceneJson, toolsUsed, stages, theme, requestId, userId)
+        result = await executeToolCall(toolName, args, sceneJson, toolsUsed, stages, theme, requestId, userId, repairCtx)
       } catch (toolError) {
         const message = toolError instanceof Error ? toolError.message : 'Tool failed'
         logger.error('tool_error', { requestId, userId, toolName, message })
@@ -540,6 +560,10 @@ async function runToolLoop(
         tool_call_id: toolCall.id,
         content: JSON.stringify(result.output),
       })
+
+      if (toolName === 'fetch_images' && forcePlanAfterImages) {
+        nextForcedChoice = forceTool('plan_diagram')
+      }
 
       if (toolName === 'plan_diagram' && !isToolError(result.output)) {
         return {
@@ -591,6 +615,24 @@ export async function processMessage(
     const canvasSummary = summarizeScene(currentSceneJson as Record<string, unknown>)
     const contextBlock  = formatSummaryForPrompt(canvasSummary)
 
+    const classification = await classifyRequest(
+      userMessage, canvasSummary.isEmpty, requestId,
+    )
+    stages.push(`Understood as: ${classification.intent}`)
+
+    if (classification.ambiguous && classification.clarifyingQuestion) {
+      return {
+        reply:     classification.clarifyingQuestion,
+        sceneJson: currentSceneJson,
+        toolsUsed: [],
+        stages,
+        intent:    classification.intent,
+      }
+    }
+
+    const mode = canvasSummary.isEmpty ? 'replace' as const : 'merge' as const
+    const composedPrompt = composeSystemPrompt(classification, mode)
+
     const enrichedUserMessage = canvasSummary.isEmpty
       ? userMessage
       : `${userMessage}\n\n[CURRENT CANVAS]\n${contextBlock}`
@@ -599,7 +641,7 @@ export async function processMessage(
 
     const trimmedHistory = trimHistory(history)
     const messages: ChatCompletionMessageParam[] = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: composedPrompt },
       ...historyToMessages(trimmedHistory),
       { role: "user", content: initialPrompt },
     ];
@@ -608,6 +650,9 @@ export async function processMessage(
 
     const loopResult = await runToolLoop(
       messages, tools, sceneJson, toolsUsed, stages, theme, model, requestId, userId,
+      classification.needsImages ? TOOL_CHOICE_AUTO : forceTool('plan_diagram'),
+      classification.needsImages,
+      { userMessage, composedPrompt, requiredEntities: classification.entities },
     )
     const { reply, totalInputTokens, totalOutputTokens, lastPlan } = loopResult
     sceneJson = loopResult.sceneJson
@@ -641,6 +686,7 @@ export async function processMessage(
         stages,
         mermaidDiagram: mermaidCode,
         lastPlan: lastPlan ?? undefined,
+        intent: classification.intent,
       };
     }
 
@@ -653,6 +699,7 @@ export async function processMessage(
       toolsUsed,
       stages,
       lastPlan: lastPlan ?? undefined,
+      intent: classification.intent,
     };
   } catch (error) {
     const aiError = classifyAiError(error)
@@ -734,6 +781,7 @@ export async function processIngest(
   try {
     const loopResult = await runToolLoop(
       messages, tools, {}, toolsUsed, stages, 'default', model, requestId, userId,
+      forceTool('plan_diagram'),
     )
     const { reply, totalInputTokens, totalOutputTokens } = loopResult
     const sceneJson = loopResult.sceneJson
