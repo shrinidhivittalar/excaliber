@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { toast, Toaster } from '@/components/ui/toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { useDashboard } from '@/hooks/useDashboard'
 import { drawingsApi } from '@/lib/api'
@@ -62,12 +63,6 @@ export default function DashboardPage() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const dashboard = useDashboard()
-  const [toast, setToast] = useState<string | null>(null)
-
-  const showToast = (message: string) => {
-    setToast(message)
-    window.setTimeout(() => setToast(null), 3000)
-  }
 
   const getFolderName = (folderId: string | null | undefined) => {
     if (!folderId) return null
@@ -230,12 +225,6 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex-1 px-6 py-6">
-          {toast && (
-            <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-sm text-emerald-200">
-              {toast}
-            </div>
-          )}
-
           {dashboard.error && (
             <p className="mb-4 text-sm text-red-400" role="alert">
               {dashboard.error}
@@ -291,7 +280,7 @@ export default function DashboardPage() {
                     if (data.shareId) {
                       const url = `${window.location.origin}/share/${data.shareId}`
                       await navigator.clipboard.writeText(url)
-                      showToast('Share link copied!')
+                      toast.success('Share link copied!')
                     }
                   }}
                 />
@@ -300,6 +289,8 @@ export default function DashboardPage() {
           )}
         </div>
       </main>
+
+      <Toaster />
     </div>
   )
 }
@@ -887,10 +878,12 @@ function DrawingCard({
         await navigator.clipboard.writeText(url)
         setLinkCopied(true)
         setMenuOpen(false)
+        toast.success('Share link copied!')
         setTimeout(() => setLinkCopied(false), 2000)
       }
     } catch (err) {
       console.error('[DrawingCard] share failed', err)
+      toast.error('Failed to copy share link')
     }
   }
 
