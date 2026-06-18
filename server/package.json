@@ -8,7 +8,8 @@
     "render:build": "npm install --include=dev && npm run build",
     "start": "node dist/index.js",
     "setup:mcp": "node scripts/setup-excalidraw-mcp.mjs",
-    "postinstall": "node scripts/setup-excalidraw-mcp.mjs --warn-only"
+    "postinstall": "node scripts/setup-excalidraw-mcp.mjs --warn-only",
+    "eval": "ts-node src/eval/run.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
