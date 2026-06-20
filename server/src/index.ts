@@ -81,7 +81,12 @@ app.use(
 );
 app.use(express.json({ limit: "2mb" }));
 app.use(cookieParser());
-app.use(mongoSanitize());
+// express-mongo-sanitize middleware reassigns req.query which is read-only in Express 5
+// sanitize body and params only
+app.use((req, _res, next) => {
+  if (req.body) req.body = mongoSanitize.sanitize(req.body as Record<string, unknown>);
+  next();
+});
 
 app.use("/api/chat", chatLimiter, chatRoutes);
 app.use("/api/clear", clearRoutes);
