@@ -33,6 +33,7 @@ router.post('/', requireAuth, userRateLimit, async (req, res) => {
       userId:    req.userId,
       chars:     content.length,
     })
+    return res.status(400).json({ error: 'Content contains disallowed patterns.' })
   }
 
   logger.info('ingest_request', {

@@ -2,8 +2,8 @@ import jwt from "jsonwebtoken";
 import { nanoid } from "nanoid";
 import { RefreshToken } from "../models/RefreshToken";
 
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || "fallback-access-secret";
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "fallback-refresh-secret";
+const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET!;
+const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
 const ACCESS_EXPIRES = process.env.JWT_ACCESS_EXPIRES || "15m";
 const REFRESH_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
 
