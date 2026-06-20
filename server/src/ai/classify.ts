@@ -17,6 +17,8 @@ export interface ClassificationResult {
   entities:           string[]
   ambiguous:          boolean
   clarifyingQuestion?: string
+  domain:             string   // e.g. 'networking', 'software/backend', 'biology', 'generic'
+  diagramType:        string   // e.g. 'tcp-handshake', 'merge-sort-algorithm', ''
 }
 
 const CLASSIFY_PROMPT = `You classify a diagram request. Respond with ONLY a JSON object, no markdown.
@@ -49,11 +51,30 @@ entities — list every concrete named thing the user wants represented.
   If the user names a general topic with no enumerable sub-parts, return
   just that topic as a single-item array.
 
+domain — pick the closest match or use 'generic':
+  networking        TCP, HTTP, DNS, WebSocket, protocols
+  software/backend  APIs, microservices, databases, caches, queues
+  software/frontend UI, components, React, state management, wireframes
+  biology           cells, organs, anatomy, life cycles, genetics
+  history           events, timelines, civilisations, dates
+  mathematics       algorithms, data structures, proofs, graphs
+  business          org charts, workflows, processes, strategy
+  generic           anything that doesn't fit the above
+
+diagramType — a short slug describing what's being drawn, derived from the
+  user's request. Examples:
+    "show TCP handshake"        → "tcp-handshake"
+    "system design for Twitter" → "twitter-system-design"
+    "visualize the brain"       → "brain-anatomy"
+    "draw merge sort"           → "merge-sort-algorithm"
+    "compare REST vs GraphQL"   → "rest-vs-graphql"
+  If the request is too vague to name, use empty string "".
+
 ambiguous — true ONLY if you genuinely cannot tell what to draw (e.g. "make
   it better" with no other context). If true, also set clarifyingQuestion
   to ONE short question. Otherwise false and omit clarifyingQuestion.
 
-Respond with exactly: {"intent":"...","layoutHint":"...","needsImages":bool,"entities":[...],"ambiguous":bool}`
+Respond with exactly: {"intent":"...","layoutHint":"...","needsImages":bool,"entities":[...],"ambiguous":bool,"domain":"...","diagramType":"..."}`
 
 export async function classifyRequest(
   userMessage:   string,
@@ -84,6 +105,8 @@ export async function classifyRequest(
       entities:           Array.isArray(parsed.entities) ? parsed.entities : [],
       ambiguous:          parsed.ambiguous   ?? false,
       clarifyingQuestion: parsed.clarifyingQuestion,
+      domain:             typeof parsed.domain      === 'string' ? parsed.domain      : 'generic',
+      diagramType:        typeof parsed.diagramType === 'string' ? parsed.diagramType : '',
     }
 
     // annotate/refine only make sense on a non-empty canvas
@@ -100,7 +123,7 @@ export async function classifyRequest(
     })
     return {
       intent: 'default', layoutHint: 'freeform', needsImages: false,
-      entities: [], ambiguous: false,
+      entities: [], ambiguous: false, domain: 'generic', diagramType: '',
     }
   }
 }

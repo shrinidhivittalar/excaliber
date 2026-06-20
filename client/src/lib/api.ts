@@ -1,6 +1,17 @@
 import axios from 'axios'
 import type { Message } from './types'
 
+export interface ClientSemanticState {
+  version:             number
+  domain:              string
+  diagramType:         string
+  establishedEntities: Array<{ id: string; label: string; role?: string }>
+  conventions:         { layout: string | null; direction: string | null; theme: string }
+  openThreads:         string[]
+  turnCount:           number
+  lastIntent:          string
+}
+
 // In-memory token storage
 let _accessToken: string | null = null
 export function getAccessToken() { return _accessToken }
@@ -80,17 +91,23 @@ export const authApi = {
 export const drawingsApi = {
   list: () => api.get('/drawings'),
   get: (id: string) => api.get(`/drawings/${id}`),
-  create: (data: { title?: string; sceneJson: object; conversationHistory?: object[]; thumbnail?: string | null }) =>
-    api.post('/drawings', data),
+  create: (data: {
+    title?:               string
+    sceneJson:            object
+    conversationHistory?: object[]
+    thumbnail?:           string | null
+    semanticState?:       ClientSemanticState
+  }) => api.post('/drawings', data),
   update: (
     id: string,
     data: {
-      title?: string
-      sceneJson?: object
+      title?:               string
+      sceneJson?:           object
       conversationHistory?: object[]
-      folderId?: string | null
-      tags?: string[]
-      thumbnail?: string | null
+      folderId?:            string | null
+      tags?:                string[]
+      thumbnail?:           string | null
+      semanticState?:       ClientSemanticState
     }
   ) => api.put(`/drawings/${id}`, data),
   delete: (id: string) => api.delete(`/drawings/${id}`),
@@ -121,13 +138,14 @@ export const shareApi = {
 }
 
 export const ingestApi = {
-  fromContent: async (content: string, filename?: string) => {
-    const response = await api.post('/ingest', { content, filename })
+  fromContent: async (content: string, filename?: string, semanticState?: ClientSemanticState) => {
+    const response = await api.post('/ingest', { content, filename, semanticState })
     return response.data as {
-      reply:      string
-      sceneJson:  object
-      toolsUsed:  string[]
-      stages:     string[]
+      reply:         string
+      sceneJson:     object
+      toolsUsed:     string[]
+      stages:        string[]
+      semanticState: ClientSemanticState
     }
   },
 }
@@ -145,10 +163,11 @@ export const critiqueApi = {
 
 // Existing canvas endpoints (keep these)
 export const sendMessage = async (
-  message: string,
-  history: Message[],
-  sceneJson: object,
-  theme: 'minimal' | 'default' | 'vibrant' = 'default'
+  message:        string,
+  history:        Message[],
+  sceneJson:      object,
+  theme:          'minimal' | 'default' | 'vibrant' = 'default',
+  semanticState?: ClientSemanticState,
 ) => {
   const response = await api.post('/chat', {
     message,
@@ -160,14 +179,17 @@ export const sendMessage = async (
       .map(({ role, content }) => ({ role, content })),
     sceneJson,
     theme,
+    semanticState,
   })
   return response.data as {
     reply:           string
     sceneJson:       object
     toolsUsed:       string[]
     stages:          string[]
+    intent?:         string
     mermaidDiagram?: string
     lastPlan?:       object
+    semanticState:   ClientSemanticState
   }
 }
 

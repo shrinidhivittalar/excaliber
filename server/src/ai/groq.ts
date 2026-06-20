@@ -21,6 +21,8 @@ import { requestRepair } from './repair';
 import { checkCompleteness } from './completeness';
 import { classifyRequest } from './classify';
 import { composeSystemPrompt } from './promptComposer';
+import type { SemanticState } from './semanticState';
+import { parseSemanticState, updateSemanticState } from './semanticState';
 import { planToExcalidrawElements, LayoutError } from "./layout";
 import type { DiagramPlan } from "./layout/types";
 import type { DiagramTheme } from "./layout/themes";
@@ -41,6 +43,7 @@ export interface ProcessMessageResult {
   mermaidDiagram?: string
   lastPlan?:       object
   intent?:         string
+  semanticState:   SemanticState
 }
 
 const MAX_FUNCTION_ITERATIONS = 10;
@@ -583,12 +586,13 @@ async function runToolLoop(
 }
 
 export async function processMessage(
-  userMessage: string,
-  history: Message[],
-  currentSceneJson: object,
-  theme: DiagramTheme = 'default',
-  requestId?: string,
-  userId?: string,
+  userMessage:       string,
+  history:           Message[],
+  currentSceneJson:  object,
+  theme:             DiagramTheme = 'default',
+  requestId?:        string,
+  userId?:           string,
+  rawSemanticState?: unknown,
 ): Promise<ProcessMessageResult> {
   if (!process.env.GROQ_API_KEY) {
     throw new Error("AI service error");
@@ -615,6 +619,9 @@ export async function processMessage(
     const canvasSummary = summarizeScene(currentSceneJson as Record<string, unknown>)
     const contextBlock  = formatSummaryForPrompt(canvasSummary)
 
+    const semanticState = parseSemanticState(rawSemanticState)
+    let capturedSemanticState: SemanticState = semanticState
+
     const classification = await classifyRequest(
       userMessage, canvasSummary.isEmpty, requestId,
     )
@@ -622,16 +629,17 @@ export async function processMessage(
 
     if (classification.ambiguous && classification.clarifyingQuestion) {
       return {
-        reply:     classification.clarifyingQuestion,
-        sceneJson: currentSceneJson,
-        toolsUsed: [],
+        reply:         classification.clarifyingQuestion,
+        sceneJson:     currentSceneJson,
+        toolsUsed:     [],
         stages,
-        intent:    classification.intent,
+        intent:        classification.intent,
+        semanticState: semanticState,
       }
     }
 
     const mode = canvasSummary.isEmpty ? 'replace' as const : 'merge' as const
-    const composedPrompt = composeSystemPrompt(classification, mode)
+    const composedPrompt = composeSystemPrompt(classification, mode, semanticState)
 
     const enrichedUserMessage = canvasSummary.isEmpty
       ? userMessage
@@ -656,6 +664,17 @@ export async function processMessage(
     )
     const { reply, totalInputTokens, totalOutputTokens, lastPlan } = loopResult
     sceneJson = loopResult.sceneJson
+
+    // Update semantic state whenever plan_diagram succeeded (lastPlan is only
+    // set on a successful plan_diagram call inside runToolLoop)
+    if (lastPlan) {
+      capturedSemanticState = updateSemanticState(
+        semanticState,
+        classification,
+        lastPlan as DiagramPlan,
+        theme,
+      )
+    }
 
     stages.push('Placing on canvas...')
 
@@ -684,9 +703,10 @@ export async function processMessage(
         ),
         toolsUsed,
         stages,
-        mermaidDiagram: mermaidCode,
-        lastPlan: lastPlan ?? undefined,
-        intent: classification.intent,
+        mermaidDiagram:mermaidCode,
+        lastPlan:      lastPlan ?? undefined,
+        intent:        classification.intent,
+        semanticState: capturedSemanticState,
       };
     }
 
@@ -698,8 +718,9 @@ export async function processMessage(
       ),
       toolsUsed,
       stages,
-      lastPlan: lastPlan ?? undefined,
-      intent: classification.intent,
+      lastPlan:      lastPlan ?? undefined,
+      intent:        classification.intent,
+      semanticState: capturedSemanticState,
     };
   } catch (error) {
     const aiError = classifyAiError(error)
@@ -744,10 +765,11 @@ export async function runCorrectionPass(
 }
 
 export async function processIngest(
-  content: string,
-  filename?: string,
-  requestId?: string,
-  userId?: string,
+  content:           string,
+  filename?:         string,
+  requestId?:        string,
+  userId?:           string,
+  rawSemanticState?: unknown,
 ): Promise<ProcessMessageResult> {
   if (!process.env.GROQ_API_KEY) {
     throw new Error('AI service error')
@@ -756,6 +778,9 @@ export async function processIngest(
   const stages: string[] = []
   const toolsUsed: string[] = []
   stages.push('Reading document...')
+
+  const semanticState = parseSemanticState(rawSemanticState)
+  let capturedSemanticState: SemanticState = semanticState
 
   const model = process.env.GROQ_MODEL ?? DEFAULT_MODEL
   const ext = filename?.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -786,6 +811,19 @@ export async function processIngest(
     const { reply, totalInputTokens, totalOutputTokens } = loopResult
     const sceneJson = loopResult.sceneJson
 
+    // Ingest doesn't run a classifier, so use empty domain/diagramType so that
+    // updateSemanticState falls back to whatever was previously established
+    if (loopResult.lastPlan) {
+      capturedSemanticState = updateSemanticState(
+        semanticState,
+        { intent: 'default' as const, layoutHint: 'freeform' as const,
+          needsImages: false, entities: [], ambiguous: false,
+          domain: '', diagramType: '' },
+        loopResult.lastPlan as DiagramPlan,
+        'default',
+      )
+    }
+
     stages.push('Placing on canvas...')
 
     const totalTokens = totalInputTokens + totalOutputTokens
@@ -808,6 +846,7 @@ export async function processIngest(
       ),
       toolsUsed,
       stages,
+      semanticState: capturedSemanticState,
     }
   } catch (error) {
     const aiError = classifyAiError(error)

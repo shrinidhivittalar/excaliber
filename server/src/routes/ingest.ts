@@ -13,7 +13,8 @@ const ingestSchema = z.object({
     .string()
     .min(10,    'Content too short — paste at least a few lines')
     .max(12000, 'Content too long — keep it under 12,000 characters'),
-  filename: z.string().max(200).regex(/^[\w\-. ]+$/, 'Invalid filename').optional(),
+  filename:     z.string().max(200).regex(/^[\w\-. ]+$/, 'Invalid filename').optional(),
+  semanticState: z.record(z.unknown()).optional(),
 })
 
 router.post('/', requireAuth, userRateLimit, async (req, res) => {
@@ -22,7 +23,7 @@ router.post('/', requireAuth, userRateLimit, async (req, res) => {
     return res.status(400).json({ error: parsed.error.issues[0].message })
   }
 
-  const { content, filename } = parsed.data
+  const { content, filename, semanticState } = parsed.data
   const startTime = Date.now()
 
   const INJECTION_PATTERNS = /ignore (previous|prior|all) instructions?|disregard|system prompt/i
@@ -43,7 +44,7 @@ router.post('/', requireAuth, userRateLimit, async (req, res) => {
 
   try {
     const result = await withTimeout(
-      () => processIngest(content, filename, req.requestId, req.userId),
+      () => processIngest(content, filename, req.requestId, req.userId, semanticState),
       30_000,
       'processIngest'
     )

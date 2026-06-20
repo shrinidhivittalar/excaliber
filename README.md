@@ -29,3 +29,36 @@ pasted onto a canvas.
 The Excalidraw MCP does not have an add_image tool. This pipeline uses
 Excalidraw's native JavaScript files API (excalidrawAPI.addFiles) which
 is available in the @excalidraw/excalidraw React component directly.
+
+## Phase 9.0.4 — Conversation Semantic State
+
+The AI now maintains a structured semantic context across turns in a
+conversation instead of re-inferring everything from scratch on each request.
+
+### What's tracked
+  - Domain (networking, software/backend, biology, etc.)
+  - Diagram type (tcp-handshake, microservices-architecture, etc.)
+  - Established entities — every drawn node with its actual scene id
+  - Layout conventions — which layout and direction were used before
+  - Open threads — entities mentioned but not yet drawn
+  - Turn count
+
+### How it works
+Semantic state is client-owned and round-tripped on every request (same
+pattern as sceneJson). The client sends its current state, the server
+injects it into the generation prompt, updates it based on what was
+classified and drawn, and returns the updated state. No server-side
+memory required.
+
+### What it enables
+  - "add error handling" works correctly in context without re-describing the system
+  - Follow-up requests reference established node ids directly instead of guessing
+  - Open threads like "we'll add TLS later" are tracked and surfaced when relevant
+  - Layout and theme conventions persist without the user re-specifying them
+
+### Persistence
+Semantic state is saved alongside the drawing in MongoDB and restored when
+a saved drawing is loaded, so context survives page reloads.
+
+### New environment variables
+None — no new configuration required.

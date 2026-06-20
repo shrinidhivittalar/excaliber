@@ -29,6 +29,8 @@ const chatSchema = z.object({
   theme: z
     .enum(['minimal', 'default', 'vibrant'])
     .default('default'),
+
+  semanticState: z.record(z.unknown()).optional(),
 });
 
 router.post("/", requireAuth, userRateLimit, async (req, res) => {
@@ -39,7 +41,7 @@ router.post("/", requireAuth, userRateLimit, async (req, res) => {
     return;
   }
 
-  const { message, history, sceneJson, theme } = parsed.data;
+  const { message, history, sceneJson, theme, semanticState } = parsed.data;
   const startTime = Date.now();
 
   if (req.userId) {
@@ -60,21 +62,29 @@ router.post("/", requireAuth, userRateLimit, async (req, res) => {
 
   try {
     const result = await withTimeout(
-      () => processMessage(message, history, sceneJson, theme, req.requestId, req.userId),
+      () => processMessage(message, history, sceneJson, theme, req.requestId, req.userId, semanticState),
       30_000,
       'processMessage'
     );
     logger.info('chat_complete', {
-      requestId: req.requestId,
-      userId: req.userId,
-      durationMs: Date.now() - startTime,
-      toolsUsed: result.toolsUsed,
+      requestId:      req.requestId,
+      userId:         req.userId,
+      durationMs:     Date.now() - startTime,
+      toolsUsed:      result.toolsUsed,
+      intent:         result.intent,
+      domain:         result.semanticState.domain,
+      diagramType:    result.semanticState.diagramType,
+      turnCount:      result.semanticState.turnCount,
+      entityCount:    result.semanticState.establishedEntities.length,
+      openThreadCount: result.semanticState.openThreads.length,
     });
     res.json({
-      reply:     result.reply,
-      sceneJson: result.sceneJson,
-      toolsUsed: result.toolsUsed,
-      stages:    result.stages,
+      reply:         result.reply,
+      sceneJson:     result.sceneJson,
+      toolsUsed:     result.toolsUsed,
+      stages:        result.stages,
+      intent:        result.intent,
+      semanticState: result.semanticState,
     });
   } catch (err) {
     if (err instanceof AiServiceError) {

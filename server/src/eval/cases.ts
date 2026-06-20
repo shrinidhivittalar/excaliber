@@ -1,3 +1,77 @@
+export interface TurnSpec {
+  prompt:              string
+  expectIntent?:       string
+  expectTool?:         string
+  minNodes?:           number
+  expectEntities?:     string[]
+  expectDomain?:       string
+  expectDiagramType?:  string
+  expectEntityIds?:    string[]   // ids that should be in establishedEntities
+  expectOpenThreads?:  string[]   // items that should be in openThreads
+}
+
+export interface MultiTurnEvalCase {
+  name:                 string
+  turns:                TurnSpec[]
+  // ids that must persist in establishedEntities after every turn
+  expectIdConsistency?: string[]
+}
+
+export const MULTI_TURN_EVAL_CASES: MultiTurnEvalCase[] = [
+  {
+    name: 'tcp_handshake_and_teardown',
+    expectIdConsistency: ['client', 'server'],
+    turns: [
+      {
+        prompt:            'show how TCP handshake works',
+        expectDomain:      'networking',
+        expectDiagramType: 'tcp-handshake',
+        expectEntityIds:   ['client', 'server'],
+        minNodes:          4,
+      },
+      {
+        prompt:           'add the connection teardown phase',
+        expectIntent:     'default',
+        expectEntityIds:  ['client', 'server'],   // must reuse same ids
+        minNodes:         6,
+      },
+    ],
+  },
+  {
+    name: 'system_design_incremental',
+    expectIdConsistency: ['api', 'db'],
+    turns: [
+      {
+        prompt:           'system design for a simple REST API with a database',
+        expectDomain:     'software/backend',
+        expectEntityIds:  ['api', 'db'],
+        minNodes:         3,
+      },
+      {
+        prompt:           'add a Redis cache between the API and database',
+        expectIntent:     'default',
+        expectEntityIds:  ['api', 'db'],   // must keep existing ids
+        expectOpenThreads: [],              // Redis should now be drawn
+        minNodes:         4,
+      },
+    ],
+  },
+  {
+    name: 'open_thread_tracking',
+    turns: [
+      {
+        prompt:           'show TCP handshake and note that we will add TLS later',
+        expectOpenThreads: ['TLS'],         // TLS mentioned but not drawn
+        minNodes:         4,
+      },
+      {
+        prompt:           'now add TLS on top of the handshake',
+        expectOpenThreads: [],              // TLS resolved after this turn
+      },
+    ],
+  },
+]
+
 export interface EvalCase {
   name:             string
   prompt:           string

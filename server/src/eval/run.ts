@@ -1,6 +1,7 @@
 import 'dotenv/config'
-import { EVAL_CASES, type EvalCase } from './cases'
+import { EVAL_CASES, MULTI_TURN_EVAL_CASES, type EvalCase, type MultiTurnEvalCase } from './cases'
 import { processMessage } from '../ai/groq'
+import type { SemanticState } from '../ai/semanticState'
 
 interface CaseResult {
   name:     string
@@ -85,27 +86,120 @@ async function runCase(c: EvalCase): Promise<CaseResult> {
   return { name: c.name, pass: failures.length === 0, failures, ms: Date.now() - t0 }
 }
 
+async function runMultiTurnCase(
+  c: MultiTurnEvalCase
+): Promise<{ name: string; pass: boolean; failures: string[]; ms: number }> {
+  const failures: string[] = []
+  let semanticState: SemanticState | undefined = undefined
+  let sceneJson: object = { type: 'excalidraw', version: 2, elements: [], appState: {} }
+  const t0 = Date.now()
+
+  for (let i = 0; i < c.turns.length; i++) {
+    const turn = c.turns[i]
+    let result: Awaited<ReturnType<typeof processMessage>>
+    try {
+      result = await processMessage(
+        turn.prompt, [], sceneJson, 'default',
+        undefined, undefined,
+        semanticState,
+      )
+    } catch (err) {
+      failures.push(`Turn ${i + 1}: processMessage threw: ${err instanceof Error ? err.message : String(err)}`)
+      break
+    }
+
+    semanticState = result.semanticState
+    sceneJson     = result.sceneJson
+
+    const ss = result.semanticState
+
+    if (turn.expectDomain && ss.domain !== turn.expectDomain) {
+      failures.push(`Turn ${i + 1}: expected domain "${turn.expectDomain}", got "${ss.domain}"`)
+    }
+    if (turn.expectDiagramType && ss.diagramType !== turn.expectDiagramType) {
+      failures.push(`Turn ${i + 1}: expected diagramType "${turn.expectDiagramType}", got "${ss.diagramType}"`)
+    }
+    if (turn.expectEntityIds) {
+      const existingIds = new Set(ss.establishedEntities.map(e => e.id))
+      for (const id of turn.expectEntityIds) {
+        if (!existingIds.has(id)) {
+          failures.push(`Turn ${i + 1}: expected entity id "${id}" in establishedEntities [${[...existingIds].join(', ')}]`)
+        }
+      }
+    }
+    if (turn.expectOpenThreads !== undefined) {
+      const threads = ss.openThreads
+      for (const expected of turn.expectOpenThreads) {
+        if (!threads.includes(expected)) {
+          failures.push(`Turn ${i + 1}: expected open thread "${expected}", got [${threads.join(', ')}]`)
+        }
+      }
+      for (const actual of threads) {
+        if (!turn.expectOpenThreads.includes(actual)) {
+          failures.push(`Turn ${i + 1}: unexpected open thread "${actual}"`)
+        }
+      }
+    }
+    if (turn.minNodes !== undefined) {
+      const plan = result.lastPlan as { nodes?: Array<unknown> } | undefined
+      const nodeCount = plan?.nodes?.length ?? 0
+      if (nodeCount < turn.minNodes) {
+        failures.push(`Turn ${i + 1}: expected >= ${turn.minNodes} nodes, got ${nodeCount}`)
+      }
+    }
+  }
+
+  // Cross-turn id consistency: check that specified ids survive to the end
+  if (c.expectIdConsistency && semanticState) {
+    const finalIds = new Set(semanticState.establishedEntities.map(e => e.id))
+    for (const id of c.expectIdConsistency) {
+      if (!finalIds.has(id)) {
+        failures.push(`Cross-turn: id "${id}" absent from establishedEntities after final turn [${[...finalIds].join(', ')}]`)
+      }
+    }
+  }
+
+  return { name: c.name, pass: failures.length === 0, failures, ms: Date.now() - t0 }
+}
+
 async function main() {
   const filter = process.argv[2]  // optional: run just one case by name
 
-  const cases = filter
+  const singleCases = filter
     ? EVAL_CASES.filter(c => c.name === filter)
     : EVAL_CASES
 
-  if (cases.length === 0) {
+  const multiCases = filter
+    ? MULTI_TURN_EVAL_CASES.filter(c => c.name === filter)
+    : MULTI_TURN_EVAL_CASES
+
+  if (singleCases.length === 0 && multiCases.length === 0) {
     console.error(`No cases match "${filter}"`)
     process.exit(1)
   }
 
-  console.log(`Running ${cases.length} eval case${cases.length !== 1 ? 's' : ''}...\n`)
+  const totalCount = singleCases.length + multiCases.length
+  console.log(`Running ${totalCount} eval case${totalCount !== 1 ? 's' : ''}...\n`)
 
   const results: CaseResult[] = []
-  for (const c of cases) {
-    process.stdout.write(`  ${c.name.padEnd(32)} `)
+
+  for (const c of singleCases) {
+    process.stdout.write(`  ${c.name.padEnd(36)} `)
     const r = await runCase(c)
     results.push(r)
     console.log(r.pass ? `PASS  (${r.ms}ms)` : `FAIL  (${r.ms}ms)`)
     if (!r.pass) r.failures.forEach(f => console.log(`    - ${f}`))
+  }
+
+  if (multiCases.length > 0) {
+    console.log('\n  [multi-turn cases]')
+    for (const c of multiCases) {
+      process.stdout.write(`  ${c.name.padEnd(36)} `)
+      const r = await runMultiTurnCase(c)
+      results.push(r)
+      console.log(r.pass ? `PASS  (${r.ms}ms)` : `FAIL  (${r.ms}ms)`)
+      if (!r.pass) r.failures.forEach(f => console.log(`    - ${f}`))
+    }
   }
 
   const passed = results.filter(r => r.pass).length

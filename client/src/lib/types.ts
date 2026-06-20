@@ -31,8 +31,9 @@ export interface DrawingMeta {
 }
 
 export interface DrawingFull extends DrawingMeta {
-  sceneJson: object
+  sceneJson:           object
   conversationHistory: Message[]
+  semanticState?:      unknown
 }
 
 export interface Folder {

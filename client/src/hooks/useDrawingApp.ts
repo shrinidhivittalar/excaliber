@@ -5,6 +5,7 @@ import { parseMermaidToExcalidraw } from '@excalidraw/mermaid-to-excalidraw'
 import axios from 'axios'
 import * as api from '@/lib/api'
 import { drawingsApi, foldersApi, versionsApi, ingestApi, critiqueApi } from '@/lib/api'
+import type { ClientSemanticState } from '@/lib/api'
 import { detectIntent } from '../lib/detectIntent'
 import { sanitizeAppState, sanitizeScene, prepareElementsForCanvas } from '@/lib/scene'
 import type { DrawingFull, Folder, Message, VersionMeta } from '@/lib/types'
@@ -163,6 +164,7 @@ export function useDrawingApp() {
   const [lastCorrected, setLastCorrected] = useState(false)
   const [isCritiquing, setIsCritiquing] = useState(false)
   const [detectedIntent, setDetectedIntent] = useState('')
+  const [semanticState, setSemanticState] = useState<ClientSemanticState | undefined>(undefined)
 
   const prevSceneRef = useRef<object | null>(null)
   const themeRef = useRef(theme)
@@ -174,6 +176,7 @@ export function useDrawingApp() {
 
   const messagesRef = useRef(messages)
   const sceneJsonRef = useRef(sceneJson)
+  const semanticStateRef = useRef<ClientSemanticState | undefined>(undefined)
   const currentDrawingIdRef = useRef(currentDrawingId)
   const currentTitleRef = useRef(currentTitle)
   const currentFolderIdRef = useRef(currentFolderId)
@@ -186,6 +189,10 @@ export function useDrawingApp() {
   useEffect(() => {
     sceneJsonRef.current = sceneJson
   }, [sceneJson])
+
+  useEffect(() => {
+    semanticStateRef.current = semanticState
+  }, [semanticState])
 
   useEffect(() => {
     currentDrawingIdRef.current = currentDrawingId
@@ -271,6 +278,7 @@ export function useDrawingApp() {
       sceneJsonRef.current = loadedScene
       setMessages(loadedMessages)
       setSceneJson(loadedScene)
+      setSemanticState(undefined)
       applySceneToCanvas(excalidrawAPIRef.current, loadedScene)
       saveToStorage(loadedMessages, loadedScene)
 
@@ -314,6 +322,11 @@ export function useDrawingApp() {
 
       setMessages(loadedMessages)
       setSceneJson(loadedScene)
+      setSemanticState(
+        drawing.semanticState
+          ? (drawing.semanticState as ClientSemanticState)
+          : undefined
+      )
       setCurrentDrawingId(drawing._id)
       setCurrentTitle(drawing.title ?? 'Untitled Drawing')
       const folderId = drawing.folderId ?? null
@@ -349,6 +362,7 @@ export function useDrawingApp() {
     sceneJsonRef.current = storedScene
     setMessages(storedMessages)
     setSceneJson(storedScene)
+    setSemanticState(undefined)
     setCurrentDrawingId(null)
     setCurrentTitle('Untitled Drawing')
     setCurrentFolderId(null)
@@ -366,6 +380,7 @@ export function useDrawingApp() {
     setCurrentTags([])
     setMessages([])
     setSceneJson(EMPTY_SCENE)
+    setSemanticState(undefined)
     clearLocalStorage()
     setIsCanvasLoading(false)
     prevSceneRef.current = null
@@ -418,6 +433,7 @@ export function useDrawingApp() {
           folderId: nextFolderId,
           tags: nextTags,
           thumbnail,
+          semanticState: semanticStateRef.current,
         }
 
         if (currentDrawingIdRef.current) {
@@ -457,9 +473,10 @@ export function useDrawingApp() {
 
       try {
         await drawingsApi.update(drawingId, {
-          title: currentTitleRef.current,
-          sceneJson: updatedScene,
+          title:               currentTitleRef.current,
+          sceneJson:           updatedScene,
           conversationHistory: messagesRef.current,
+          semanticState:       semanticStateRef.current,
         })
         void loadVersions()
       } catch (error) {
@@ -580,7 +597,10 @@ export function useDrawingApp() {
       saveToStorage(nextMessages, sceneJsonRef.current)
 
       try {
-        const data = await api.sendMessage(trimmed, nextMessages, sceneJsonRef.current, effectiveTheme)
+        const data = await api.sendMessage(
+          trimmed, nextMessages, sceneJsonRef.current, effectiveTheme,
+          semanticStateRef.current,
+        )
 
         if (data.stages?.length) {
           for (const stage of data.stages) {
@@ -626,6 +646,10 @@ export function useDrawingApp() {
           void autoSaveDrawing(safeScene)
         }
 
+        if (data.semanticState) {
+          setSemanticState(data.semanticState)
+        }
+
         if (data.lastPlan) {
           void runVisualFeedback(safeScene as Record<string, unknown>, data.lastPlan)
         }
@@ -660,7 +684,7 @@ export function useDrawingApp() {
     setLoadingStage('Reading document...')
 
     try {
-      const data = await ingestApi.fromContent(content, filename)
+      const data = await ingestApi.fromContent(content, filename, semanticStateRef.current)
 
       if (data.stages?.length) {
         for (const stage of data.stages) {
@@ -674,6 +698,10 @@ export function useDrawingApp() {
       setCanUndo(true)
       setSceneJson(safeScene)
       applySceneToCanvas(excalidrawAPIRef.current, safeScene)
+
+      if (data.semanticState) {
+        setSemanticState(data.semanticState)
+      }
 
       setMessages(prev => [
         ...prev,
@@ -717,6 +745,7 @@ export function useDrawingApp() {
 
       setMessages([])
       setSceneJson(emptyScene)
+      setSemanticState(undefined)
       applySceneToCanvas(excalidrawAPIRef.current, emptyScene)
       clearLocalStorage()
     } catch (error) {

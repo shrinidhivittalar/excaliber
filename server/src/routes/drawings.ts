@@ -166,7 +166,7 @@ router.get("/:id", async (req: AuthRequest, res) => {
 });
 
 router.post("/", async (req: AuthRequest, res) => {
-  const { title, sceneJson, conversationHistory, thumbnail } = req.body;
+  const { title, sceneJson, conversationHistory, thumbnail, semanticState } = req.body;
 
   if (sceneJson === undefined || sceneJson === null) {
     res.status(400).json({ error: "sceneJson is required" });
@@ -193,6 +193,7 @@ router.post("/", async (req: AuthRequest, res) => {
     ...(tags !== null ? { tags } : {}),
     ...(folderId !== undefined ? { folderId } : {}),
     ...(thumbnail !== undefined ? { thumbnail } : {}),
+    ...(semanticState !== undefined ? { semanticState } : {}),
   });
 
   await createVersion(
@@ -213,13 +214,14 @@ router.put("/:id", async (req: AuthRequest, res) => {
     return;
   }
 
-  const { title, sceneJson, conversationHistory, thumbnail } = req.body;
+  const { title, sceneJson, conversationHistory, thumbnail, semanticState } = req.body;
   const updates: Record<string, unknown> = {};
 
   if (title !== undefined)               updates.title               = title;
   if (sceneJson !== undefined)           updates.sceneJson           = sceneJson;
   if (conversationHistory !== undefined) updates.conversationHistory = conversationHistory;
   if (thumbnail !== undefined)           updates.thumbnail           = thumbnail;
+  if (semanticState !== undefined)       updates.semanticState       = semanticState;
 
   if (req.body.folderId !== undefined) {
     const folderId = await resolveFolderId(req.body.folderId, req.userId!);

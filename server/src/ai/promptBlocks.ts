@@ -1,4 +1,5 @@
 import type { DiagramIntent, LayoutHint } from './classify'
+import type { SemanticState } from './semanticState'
 
 export const BASE_BLOCK = `You are an AI diagram planner. You decide WHAT to draw.
 Server-side code handles ALL positioning, sizing, and coordinates — you never
@@ -87,3 +88,51 @@ Edges follow the same logic — omitting an existing edge removes it.`
 export const FETCH_IMAGES_BLOCK = `Call fetch_images BEFORE plan_diagram — the
 subject of this request is physical/real-world. Use a short 2-3 word query.
 If fetch_images returns an empty array, proceed with plan_diagram anyway.`
+
+export function buildSemanticContextBlock(state: SemanticState): string | null {
+  // Don't inject a block on the very first turn — there's nothing to say yet
+  if (state.turnCount === 0) return null
+
+  const lines: string[] = [
+    '[CONVERSATION CONTEXT]',
+    `Turn: ${state.turnCount + 1} of this conversation`,
+  ]
+
+  if (state.domain && state.domain !== 'generic') {
+    lines.push(`Domain: ${state.domain}`)
+  }
+  if (state.diagramType) {
+    lines.push(`Diagram type: ${state.diagramType}`)
+  }
+
+  if (state.conventions.layout) {
+    const dir = state.conventions.direction
+      ? ` (${state.conventions.direction})`
+      : ''
+    lines.push(`Layout convention: ${state.conventions.layout}${dir}`)
+  }
+
+  if (state.establishedEntities.length > 0) {
+    const entityList = state.establishedEntities
+      .slice(0, 12)   // cap at 12 to keep the block compact
+      .map(e => {
+        const role = e.role ? ` [${e.role}]` : ''
+        return `  "${e.label}"${role} → id:"${e.id}"`
+      })
+      .join('\n')
+    lines.push(`Established entities (use exact ids in merge operations):\n${entityList}`)
+  }
+
+  if (state.openThreads.length > 0) {
+    lines.push(
+      `Open threads (mentioned but not yet drawn): ${state.openThreads.join(', ')}`
+    )
+  }
+
+  lines.push(
+    'Use this context to make consistent decisions. ' +
+    'When extending the diagram, reference established ids exactly as shown above.'
+  )
+
+  return lines.join('\n')
+}
