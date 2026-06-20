@@ -49,7 +49,7 @@ export function emptySemanticState(): SemanticState {
 function inferRole(label: string, domain: string): string | undefined {
   const l = label.toLowerCase()
 
-  if (/\b(database|db|postgres|mysql|mongo|redis|dynamo)\b/.test(l))
+  if (/\b(database|db|postgres|mysql|mongo|dynamo)\b/.test(l))
     return 'database'
   if (/\b(api|service|backend|server|endpoint)\b/.test(l))
     return 'api-service'
@@ -59,7 +59,7 @@ function inferRole(label: string, domain: string): string | undefined {
     return 'load-balancer'
   if (/\b(queue|kafka|sqs|pubsub|message)\b/.test(l))
     return 'message-queue'
-  if (/\b(cache|memcache)\b/.test(l))
+  if (/\b(cache|memcache|redis)\b/.test(l))
     return 'cache'
 
   if (domain === 'biology') {

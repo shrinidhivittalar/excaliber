@@ -9,7 +9,7 @@ import type { ClientSemanticState } from '@/lib/api'
 import { detectIntent } from '../lib/detectIntent'
 import { sanitizeAppState, sanitizeScene, prepareElementsForCanvas } from '@/lib/scene'
 import type { DrawingFull, Folder, Message, VersionMeta } from '@/lib/types'
-import type { SelectedNode } from '../components/NodePanel'
+import type { SelectedNode } from '../components/NodeInfoPanel'
 
 const STORAGE_KEYS = {
   messages: 'ai-drawing-messages',
@@ -156,6 +156,10 @@ export function useDrawingApp() {
   const [versionsLoading, setVersionsLoading] = useState(false)
   const [versionToast, setVersionToast] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null)
+  const selectedNodeIdRef = useRef<string | null>(null)
+  const [panelDismissedForId, setPanelDismissedForId] = useState<string | null>(null)
+  const [aiExplanations, setAiExplanations] = useState<Record<string, string>>({})
+  const pendingExplainNodeId = useRef<string | null>(null)
   const [canUndo, setCanUndo] = useState(false)
   const [errorToast, setErrorToast] = useState<string | null>(null)
   const [autoCorrectEnabled, setAutoCorrectEnabled] = useState<boolean>(() =>
@@ -311,6 +315,7 @@ export function useDrawingApp() {
 
   const loadDrawing = useCallback(async (id: string) => {
     setIsCanvasLoading(true)
+    setAiExplanations({})
     try {
       const { data } = await drawingsApi.get(id)
       const drawing = data as DrawingFull
@@ -614,6 +619,15 @@ export function useDrawingApp() {
         const updatedMessages = [...nextMessages, assistantMessage]
 
         setMessages(updatedMessages)
+
+        if (pendingExplainNodeId.current) {
+          setAiExplanations(prev => ({
+            ...prev,
+            [pendingExplainNodeId.current!]: data.reply,
+          }))
+          pendingExplainNodeId.current = null
+        }
+
         let safeScene = sanitizeScene(data.sceneJson)
 
         if (data.mermaidDiagram) {
@@ -746,6 +760,7 @@ export function useDrawingApp() {
       setMessages([])
       setSceneJson(emptyScene)
       setSemanticState(undefined)
+      setAiExplanations({})
       applySceneToCanvas(excalidrawAPIRef.current, emptyScene)
       clearLocalStorage()
     } catch (error) {
@@ -777,27 +792,49 @@ export function useDrawingApp() {
       )
 
       if (selectedIds.length === 1) {
-        const el = (elements as Record<string, unknown>[])
-          .find(e => e.id === selectedIds[0])
+        const allElements = elements as Record<string, unknown>[]
+        const el = allElements.find(e => e.id === selectedIds[0])
 
-        if (
-          el &&
-          ['rectangle', 'ellipse', 'diamond'].includes(el.type as string) &&
-          (el.label as Record<string, unknown>)?.text
-        ) {
-          const label = (el.label as Record<string, unknown>).text as string
-          const { screenX, screenY } = canvasToScreen(
-            el.x as number,
-            el.y as number,
-            el.width as number,
-            appState as { scrollX: number; scrollY: number; zoom: { value: number } }
+        if (el && ['rectangle', 'ellipse', 'diamond'].includes(el.type as string)) {
+          const boundText = allElements.find(
+            e => e.type === 'text' && e.containerId === el.id
           )
-          setSelectedNode({ id: el.id as string, label, screenX, screenY })
+          const label =
+            (boundText?.text as string | undefined) ??
+            ((el.label as Record<string, unknown>)?.text as string | undefined)
+
+          if (label) {
+            const nodeId = el.id as string
+            // Only update state when the selected node actually changes
+            if (selectedNodeIdRef.current !== nodeId) {
+              selectedNodeIdRef.current = nodeId
+              const { screenX, screenY } = canvasToScreen(
+                el.x as number,
+                el.y as number,
+                el.width as number,
+                appState as { scrollX: number; scrollY: number; zoom: { value: number } }
+              )
+              setSelectedNode({ id: nodeId, label, screenX, screenY })
+            }
+          } else {
+            if (selectedNodeIdRef.current !== null) {
+              selectedNodeIdRef.current = null
+              setSelectedNode(null)
+            }
+          }
         } else {
-          setSelectedNode(null)
+          if (selectedNodeIdRef.current !== null) {
+            selectedNodeIdRef.current = null
+            setSelectedNode(null)
+          }
         }
       } else {
-        setSelectedNode(null)
+        // Nothing selected — full deselect resets both node and dismiss state
+        if (selectedNodeIdRef.current !== null) {
+          selectedNodeIdRef.current = null
+          setSelectedNode(null)
+        }
+        setPanelDismissedForId(null)
       }
 
       if (sceneDebounceRef.current) {
@@ -868,6 +905,16 @@ export function useDrawingApp() {
     restoreVersion,
     currentVersionNumber,
     versionToast,
+    semanticState,
+    panelDismissedForId,
+    dismissNodePanel: () => {
+      if (selectedNode) setPanelDismissedForId(selectedNode.id)
+    },
+    aiExplanations,
+    explainNode: (nodeId: string, label: string) => {
+      pendingExplainNodeId.current = nodeId
+      void sendMessage(`Explain "${label}" in the context of this diagram.`)
+    },
     autoCorrectEnabled,
     setAutoCorrectEnabled: (v: boolean) => {
       autoCorrectRef.current = v

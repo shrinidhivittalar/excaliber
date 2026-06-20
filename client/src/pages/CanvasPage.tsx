@@ -5,7 +5,7 @@ import '@excalidraw/excalidraw/index.css'
 import { CanvasTopBar }       from '@/components/CanvasTopBar'
 import { HistoryDrawer }      from '@/components/HistoryDrawer'
 import { CommandBar }         from '@/components/CommandBar'
-import { NodePanel }          from '@/components/NodePanel'
+import { NodeInfoPanel }      from '@/components/NodeInfoPanel'
 import { VersionHistoryPanel } from '@/components/VersionHistoryPanel'
 import { TooltipProvider }    from '@/components/ui/tooltip'
 import { useAuth }            from '@/contexts/AuthContext'
@@ -66,7 +66,11 @@ export default function CanvasPage() {
     versionToast,
     excalidrawAPIRef,
     selectedNode,
-    clearSelectedNode,
+    semanticState,
+    panelDismissedForId,
+    dismissNodePanel,
+    aiExplanations,
+    explainNode,
     ingestDocument,
     canUndo,
     undoLastAiAction,
@@ -262,16 +266,16 @@ export default function CanvasPage() {
           </div>
         )}
 
-        {selectedNode && (
-          <NodePanel
+        {selectedNode && selectedNode.id !== panelDismissedForId && (
+          <NodeInfoPanel
             node={selectedNode}
-            onExplain={(label) =>
-              sendMessage(`Explain "${label}" in the context of this diagram.`)
-            }
+            semanticState={semanticState}
+            aiExplanation={aiExplanations[selectedNode.id]}
+            onExplain={(label) => explainNode(selectedNode.id, label)}
             onDrillDown={(label) =>
               sendMessage(`Create a detailed diagram expanding on "${label}".`)
             }
-            onClose={clearSelectedNode}
+            onClose={dismissNodePanel}
           />
         )}
 

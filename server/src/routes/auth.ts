@@ -1,14 +1,18 @@
 import { Router, type Response } from "express";
 import type { CookieOptions } from "express";
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 import { User } from "../models/User";
 import { RefreshToken } from "../models/RefreshToken";
+import { PasswordResetToken } from "../models/PasswordResetToken";
 import {
   signAccessToken,
   createRefreshToken,
   rotateRefreshToken,
 } from "../auth/tokens";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
+import { sendPasswordResetEmail } from "../services/email";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -134,6 +138,75 @@ router.post("/logout", async (req, res) => {
 
   clearRefreshTokenCookie(res);
   res.json({ success: true });
+});
+
+router.post("/forgot-password", async (req, res) => {
+  const { email } = req.body;
+
+  // Always respond 200 — don't leak whether the email exists
+  if (!isValidEmail(email)) {
+    res.json({ message: "If that email exists, a reset link has been sent." });
+    return;
+  }
+
+  const user = await User.findOne({ email: email.toLowerCase() });
+  if (!user) {
+    res.json({ message: "If that email exists, a reset link has been sent." });
+    return;
+  }
+
+  // Invalidate any existing reset tokens for this user
+  await PasswordResetToken.deleteMany({ userId: user._id });
+
+  const rawToken  = crypto.randomBytes(32).toString("hex");
+  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+  await PasswordResetToken.create({ tokenHash, userId: user._id, expiresAt });
+
+  const clientUrl  = process.env.CLIENT_URL ?? "http://localhost:5173";
+  const resetLink  = `${clientUrl}/reset-password?token=${rawToken}`;
+
+  try {
+    await sendPasswordResetEmail(user.email, resetLink);
+    logger.info('password_reset_email_sent', { email: user.email });
+  } catch (err) {
+    logger.error('password_reset_email_failed', {
+      email: user.email,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  res.json({ message: "If that email exists, a reset link has been sent." });
+});
+
+router.post("/reset-password", async (req, res) => {
+  const { token, password } = req.body;
+
+  if (typeof token !== "string" || !token) {
+    res.status(400).json({ error: "Reset token is required." });
+    return;
+  }
+
+  if (!isValidPassword(password)) {
+    res.status(400).json({ error: "Password must be at least 8 characters." });
+    return;
+  }
+
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const record    = await PasswordResetToken.findOne({ tokenHash });
+
+  if (!record || record.expiresAt < new Date()) {
+    await PasswordResetToken.deleteOne({ tokenHash });
+    res.status(400).json({ error: "This reset link has expired or is invalid. Please request a new one." });
+    return;
+  }
+
+  const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  await User.findByIdAndUpdate(record.userId, { hashedPassword });
+  await PasswordResetToken.deleteOne({ tokenHash });
+
+  res.json({ message: "Password updated successfully." });
 });
 
 router.get("/me", requireAuth, async (req: AuthRequest, res) => {

@@ -5,6 +5,7 @@ import AuthPage from '@/pages/AuthPage'
 import CanvasPage from '@/pages/CanvasPage'
 import DashboardPage from '@/pages/DashboardPage'
 import SharePage from '@/pages/SharePage'
+import ResetPasswordPage from '@/pages/ResetPasswordPage'
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
@@ -48,6 +49,7 @@ export default function App() {
         }
       />
       <Route path="/share/:shareId" element={<SharePage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
     </Routes>
   )
 }

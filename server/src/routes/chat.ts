@@ -85,6 +85,7 @@ router.post("/", requireAuth, userRateLimit, async (req, res) => {
       stages:        result.stages,
       intent:        result.intent,
       semanticState: result.semanticState,
+      lastPlan:      result.lastPlan,
     });
   } catch (err) {
     if (err instanceof AiServiceError) {
