@@ -58,3 +58,8 @@ export const critiqueRateLimit = createUserRateLimit({
   windowMs:          60_000,
   errorMessage:      'Too many diagram reviews — wait a moment.',
 })
+export const ingestRateLimit = createUserRateLimit({
+  requestsPerWindow: parseInt(process.env.INGEST_RATE_LIMIT_COUNT ?? '5', 10),
+  windowMs:          60_000,
+  errorMessage:      'Too many document uploads - wait a moment and try again.',
+})

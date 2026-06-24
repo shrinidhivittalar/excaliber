@@ -10,6 +10,7 @@ import {
   createRefreshToken,
   rotateRefreshToken,
 } from "../auth/tokens";
+import { validatePasswordStrength } from "../auth/passwordPolicy";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
 import { authRateLimit } from "../middleware/authRateLimit";
 import { sendPasswordResetEmail } from "../services/email";
@@ -59,8 +60,14 @@ router.post("/register", authRateLimit, async (req, res) => {
     return;
   }
 
-  if (!isValidPassword(password)) {
-    res.status(400).json({ error: "Password must be at least 8 characters" });
+  if (typeof password !== "string") {
+    res.status(400).json({ error: "Password is required." });
+    return;
+  }
+
+  const passwordCheck = validatePasswordStrength(password);
+  if (!passwordCheck.valid) {
+    res.status(400).json({ error: passwordCheck.reason });
     return;
   }
 
@@ -135,7 +142,7 @@ router.post("/refresh", async (req, res) => {
     return;
   }
 
-  const result = await rotateRefreshToken(oldToken);
+  const result = await rotateRefreshToken(oldToken, req.requestId);
   if (!result) {
     res.status(401).json({ error: "Refresh token invalid or expired" });
     return;
@@ -203,6 +210,8 @@ router.post("/reset-password", async (req, res) => {
     return;
   }
 
+  // Keep password policy enforcement in sync here if the reset flow is
+  // hardened beyond the existing minimum-length check.
   if (!isValidPassword(password)) {
     res.status(400).json({ error: "Password must be at least 8 characters." });
     return;
@@ -241,3 +250,4 @@ router.get("/me", requireAuth, async (req: AuthRequest, res) => {
 });
 
 export default router;
+

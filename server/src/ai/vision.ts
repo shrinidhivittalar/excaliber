@@ -1,4 +1,5 @@
 import Groq from 'groq-sdk'
+import { logger } from '../lib/logger'
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
@@ -50,7 +51,7 @@ export async function critiqueImage(imageBase64: string): Promise<CritiqueResult
     })
 
     if ((response.choices[0]?.finish_reason as string) === 'error') {
-      console.warn('[VISION] model returned error finish_reason')
+      logger.warn('vision_finish_reason_error')
       return { hasIssues: false, issues: [] }
     }
 
@@ -67,7 +68,8 @@ export async function critiqueImage(imageBase64: string): Promise<CritiqueResult
   } catch (err) {
     // If vision call fails for any reason, return no issues and let the
     // original diagram through — never block the user over a critique failure
-    console.warn('[VISION CRITIQUE] failed, passing through:', err instanceof Error ? err.message : err)
+    logger.warn('vision_critique_failed', { message: err instanceof Error ? err.message : String(err) })
     return { hasIssues: false, issues: [] }
   }
 }
+

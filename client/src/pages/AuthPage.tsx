@@ -14,6 +14,14 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 type View = 'signin' | 'register' | 'forgot' | 'forgot-sent'
 
+function checkPasswordClientSide(password: string): string | null {
+  if (password.length < 10) return 'Password must be at least 10 characters.'
+  if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+    return 'Password must include at least one letter and one number.'
+  }
+  return null
+}
+
 function getApiErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data as { error?: string } | undefined
@@ -63,12 +71,9 @@ export default function AuthPage() {
     }
 
     if (view === 'register') {
-      if (password.length < 8) {
-        setError('Password must be at least 8 characters')
-        return
-      }
-      if (password !== confirmPassword) {
-        setError('Passwords do not match')
+      const passwordError = checkPasswordClientSide(password)
+      if (passwordError) {
+        setError(passwordError)
         return
       }
     }
@@ -108,6 +113,8 @@ export default function AuthPage() {
       setIsSubmitting(false)
     }
   }
+
+  const passwordClientError = view === 'register' ? checkPasswordClientSide(password) : null
 
   const ambientOrbs = (
     <>
@@ -269,7 +276,10 @@ export default function AuthPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                className="border-white/10 bg-zinc-900 pr-10 text-white placeholder:text-zinc-500"
+                className={cn(
+                  'border-white/10 bg-zinc-900 pr-10 text-white placeholder:text-zinc-500',
+                  passwordClientError && 'border-red-500/50'
+                )}
               />
               <button
                 type="button"
@@ -280,6 +290,9 @@ export default function AuthPage() {
                 {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
+            {passwordClientError && (
+              <p className="text-xs text-red-500">{passwordClientError}</p>
+            )}
           </div>
 
           {view === 'register' && (
@@ -336,3 +349,4 @@ export default function AuthPage() {
     </div>
   )
 }
+

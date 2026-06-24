@@ -31,21 +31,13 @@ import critiqueRoutes from "./routes/critique";
 const app = express();
 app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3001;
-const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:5173")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const allowedOrigin = process.env.ALLOWED_ORIGIN ?? 'http://localhost:5173';
 
-function isAllowedOrigin(origin: string): boolean {
-  if (allowedOrigins.includes(origin)) {
-    return true;
-  }
-
-  if (!process.env.CLIENT_URL) {
-    return origin.startsWith("http://localhost:") || origin.endsWith(".vercel.app");
-  }
-
-  return false;
+if (process.env.NODE_ENV === 'production' && !process.env.ALLOWED_ORIGIN) {
+  process.stderr.write(
+    '[STARTUP ERROR] ALLOWED_ORIGIN must be set in production.\n'
+  );
+  process.exit(1);
 }
 
 const chatLimiter = rateLimit({
@@ -63,29 +55,33 @@ const authLimiter = rateLimit({
   message: { error: "Too many attempts, please try again later." },
 });
 
-app.use(helmet());
-app.use(requestIdMiddleware);
-app.use(
-  cors({
-    origin: (
-      origin: string | undefined,
-      callback: (err: Error | null, allow?: boolean) => void
-    ) => {
-      if (!origin || isAllowedOrigin(origin)) {
-        callback(null, true);
-        return;
-      }
-      callback(new Error("Not allowed by CORS"));
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc:  ["'self'"],
+      styleSrc:   ["'self'", "'unsafe-inline'"],
+      imgSrc:     ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", allowedOrigin],
     },
-    credentials: true,
-  })
-);
+  },
+  frameguard: { action: 'deny' },
+}));
+app.use(requestIdMiddleware);
+app.use(cors({ origin: allowedOrigin, credentials: true }));
 app.use(express.json({ limit: "2mb" }));
 app.use(cookieParser());
-// express-mongo-sanitize middleware reassigns req.query which is read-only in Express 5
-// sanitize body and params only
+// express-mongo-sanitize reassigns req.query, which is getter-only in Express 5.
+// Sanitize mutable request parts only.
 app.use((req, _res, next) => {
-  if (req.body) req.body = mongoSanitize.sanitize(req.body as Record<string, unknown>);
+  if (req.body) {
+    req.body = mongoSanitize.sanitize(req.body as Record<string, unknown>);
+  }
+
+  if (req.params) {
+    req.params = mongoSanitize.sanitize(req.params as Record<string, unknown>) as typeof req.params;
+  }
+
   next();
 });
 
@@ -112,11 +108,11 @@ async function startServer() {
   }
 
   app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT}`);
+    logger.info("server_started", { port: PORT });
   });
 }
 
 startServer().catch((error) => {
-  console.error("Failed to start server:", error);
+  logger.error('server_start_failed', { message: error instanceof Error ? error.message : String(error) });
   process.exit(1);
 });

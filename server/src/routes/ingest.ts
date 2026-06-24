@@ -1,8 +1,9 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireAuth } from '../middleware/auth'
-import { userRateLimit } from '../middleware/userRateLimit'
+import { ingestRateLimit } from '../middleware/userRateLimit'
 import { AiServiceError, processIngest } from '../ai/groq'
+import { scanForInjectionPatterns } from '../ai/injectionScan'
 import { logger } from '../lib/logger'
 import { withTimeout } from '../lib/retry'
 
@@ -17,7 +18,7 @@ const ingestSchema = z.object({
   semanticState: z.record(z.unknown()).optional(),
 })
 
-router.post('/', requireAuth, userRateLimit, async (req, res) => {
+router.post('/', requireAuth, ingestRateLimit, async (req, res) => {
   const parsed = ingestSchema.safeParse(req.body)
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0].message })
@@ -26,11 +27,12 @@ router.post('/', requireAuth, userRateLimit, async (req, res) => {
   const { content, filename, semanticState } = parsed.data
   const startTime = Date.now()
 
-  const INJECTION_PATTERNS = /ignore (previous|prior|all) instructions?|disregard|system prompt/i
-  if (INJECTION_PATTERNS.test(content)) {
-    logger.warn('ingest_injection_attempt', {
+  const suspiciousPatterns = scanForInjectionPatterns(content)
+  if (suspiciousPatterns.length > 0) {
+    logger.warn('injection_pattern_detected', {
       requestId: req.requestId,
       userId:    req.userId,
+      patterns:  suspiciousPatterns,
       chars:     content.length,
     })
     return res.status(400).json({ error: 'Content contains disallowed patterns.' })
@@ -87,3 +89,4 @@ router.post('/', requireAuth, userRateLimit, async (req, res) => {
 })
 
 export default router
+

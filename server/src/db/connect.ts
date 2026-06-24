@@ -1,4 +1,5 @@
 import mongoose from 'mongoose'
+import { logger } from '../lib/logger'
 
 let isConnected = false
 
@@ -24,5 +25,6 @@ export async function connectDB(): Promise<void> {
   }
 
   isConnected = true
-  console.log('MongoDB connected')
+  logger.info('mongodb_connected')
 }
+
