@@ -11,7 +11,9 @@ import {
   rotateRefreshToken,
 } from "../auth/tokens";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
+import { authRateLimit } from "../middleware/authRateLimit";
 import { sendPasswordResetEmail } from "../services/email";
+import { isLockedOut, recordFailedAttempt, clearAttempts } from "../services/loginAttempts";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -49,7 +51,7 @@ function isValidPassword(password: unknown): password is string {
   return typeof password === "string" && password.length >= 8;
 }
 
-router.post("/register", async (req, res) => {
+router.post("/register", authRateLimit, async (req, res) => {
   const { email, password } = req.body;
 
   if (!isValidEmail(email)) {
@@ -82,7 +84,7 @@ router.post("/register", async (req, res) => {
   });
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", authRateLimit, async (req, res) => {
   const { email, password } = req.body;
 
   if (!isValidEmail(email) || typeof password !== "string") {
@@ -90,17 +92,30 @@ router.post("/login", async (req, res) => {
     return;
   }
 
+  const lockStatus = isLockedOut(email);
+  if (lockStatus.locked) {
+    res.status(429).json({
+      error: "Too many failed attempts. Try again later.",
+      retryAfterMs: lockStatus.retryAfterMs,
+    });
+    return;
+  }
+
   const user = await User.findOne({ email: email.toLowerCase() });
   if (!user) {
+    recordFailedAttempt(email);
     res.status(401).json({ error: "Invalid email or password" });
     return;
   }
 
   const valid = await bcrypt.compare(password, user.hashedPassword);
   if (!valid) {
+    recordFailedAttempt(email);
     res.status(401).json({ error: "Invalid email or password" });
     return;
   }
+
+  clearAttempts(email);
 
   const userId = user._id.toString();
   const accessToken = signAccessToken(userId);

@@ -6,8 +6,13 @@ const REQUIRED: string[] = [
 ]
 
 const OPTIONAL_WITH_DEFAULTS: Record<string, string> = {
-  PORT:                  '3001',
-  USER_RATE_LIMIT_COUNT: '10',
+  PORT:                    '3001',
+  AUTH_RATE_LIMIT_COUNT:   '5',
+  AUTH_RATE_LIMIT_MS:      '900000',
+  LOGIN_LOCKOUT_THRESHOLD: '5',
+  LOGIN_LOCKOUT_WINDOW_MS: '900000',
+  LOGIN_LOCKOUT_DURATION_MS: '900000',
+  USER_RATE_LIMIT_COUNT:   '10',
   USER_RATE_LIMIT_MS:    '60000',
   DAILY_TOKEN_LIMIT:     '100000',
   JWT_ACCESS_EXPIRES:    '15m',
@@ -31,3 +36,4 @@ export function validateEnv(): void {
     }
   }
 }
+
