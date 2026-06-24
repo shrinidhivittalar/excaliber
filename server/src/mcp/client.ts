@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { resolveExcalidrawMcpEntry } from "./resolvePath";
+import { logger } from "../lib/logger";
 
 export let isMcpAvailable = false;
 export let mcpClient: Client | null = null;
@@ -30,9 +31,9 @@ export async function initMcp(): Promise<void> {
   const mcpEntry = resolveExcalidrawMcpEntry();
   if (!mcpEntry) {
     isMcpAvailable = false;
-    console.warn(
-      "MCP connection failed — Excalidraw MCP not built. Run: npm run setup:mcp --workspace=server"
-    );
+    logger.warn("mcp_missing", {
+      message: "Excalidraw MCP not built. Run: npm run setup:mcp --workspace=server",
+    });
     return;
   }
 
@@ -53,17 +54,15 @@ export async function initMcp(): Promise<void> {
     mcpClient = client;
     cachedTools = tools;
     isMcpAvailable = true;
-    console.log(
-      "MCP connected, tools available:",
-      tools.map((t) => t.name)
-    );
+    logger.info("mcp_connected", { tools: tools.map((t) => t.name) });
   } catch (error) {
     isMcpAvailable = false;
     mcpClient = null;
     cachedTools = [];
-    console.warn(
-      "MCP connection failed — drawing tools unavailable:",
-      error instanceof Error ? error.message : error
-    );
+    logger.warn("mcp_connection_failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
 }
+
+

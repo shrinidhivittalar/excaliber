@@ -62,3 +62,11 @@ a saved drawing is loaded, so context survives page reloads.
 
 ### New environment variables
 None — no new configuration required.
+
+## Deployment note
+
+Rate limiting, login lockout, and token budgets are tracked in-memory and
+are correct for a single server instance. If this is ever deployed across
+multiple instances or with auto-scaling, these need to move to a shared
+store such as Redis. Each instance currently enforces limits independently,
+which would silently multiply effective limits per user.

@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { nanoid } from "nanoid";
 import { RefreshToken } from "../models/RefreshToken";
+import { logger } from "../lib/logger";
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || "fallback-access-secret";
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "fallback-refresh-secret";
@@ -25,10 +26,30 @@ export function verifyAccessToken(token: string): { sub: string } {
 }
 
 export async function rotateRefreshToken(
-  oldToken: string
+  oldToken: string,
+  requestId?: string
 ): Promise<{ userId: string; newRefreshToken: string } | null> {
-  const existing = await RefreshToken.findOneAndDelete({ token: oldToken });
-  if (!existing || existing.expiresAt < new Date()) return null;
+  const existing = await RefreshToken.findOne({ token: oldToken });
+
+  if (!existing) {
+    return null;
+  }
+
+  if (existing.replacedAt) {
+    logger.error("refresh_token_reuse_detected", {
+      requestId,
+      userId: existing.userId.toString(),
+    });
+    await RefreshToken.deleteMany({ userId: existing.userId });
+    return null;
+  }
+
+  if (existing.expiresAt < new Date()) {
+    return null;
+  }
+
+  existing.replacedAt = new Date();
+  await existing.save();
 
   const userId = existing.userId.toString();
   const newRefreshToken = await createRefreshToken(userId);

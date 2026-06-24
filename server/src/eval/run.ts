@@ -2,6 +2,7 @@ import 'dotenv/config'
 import { EVAL_CASES, MULTI_TURN_EVAL_CASES, type EvalCase, type MultiTurnEvalCase } from './cases'
 import { processMessage } from '../ai/groq'
 import type { SemanticState } from '../ai/semanticState'
+import { logger } from '../lib/logger'
 
 interface CaseResult {
   name:     string
@@ -174,38 +175,40 @@ async function main() {
     : MULTI_TURN_EVAL_CASES
 
   if (singleCases.length === 0 && multiCases.length === 0) {
-    console.error(`No cases match "${filter}"`)
+    logger.error('eval_no_cases_match', { filter })
     process.exit(1)
   }
 
   const totalCount = singleCases.length + multiCases.length
-  console.log(`Running ${totalCount} eval case${totalCount !== 1 ? 's' : ''}...\n`)
+  logger.info('eval_started', { totalCount })
 
   const results: CaseResult[] = []
 
   for (const c of singleCases) {
-    process.stdout.write(`  ${c.name.padEnd(36)} `)
+    logger.info('eval_case_started', { name: c.name })
     const r = await runCase(c)
     results.push(r)
-    console.log(r.pass ? `PASS  (${r.ms}ms)` : `FAIL  (${r.ms}ms)`)
-    if (!r.pass) r.failures.forEach(f => console.log(`    - ${f}`))
+    logger.info('eval_case_result', { name: r.name, pass: r.pass, durationMs: r.ms })
+    if (!r.pass) r.failures.forEach(f => logger.warn('eval_case_failure', { name: r.name, failure: f }))
   }
 
   if (multiCases.length > 0) {
-    console.log('\n  [multi-turn cases]')
+    logger.info('eval_multi_turn_started')
     for (const c of multiCases) {
-      process.stdout.write(`  ${c.name.padEnd(36)} `)
+      logger.info('eval_case_started', { name: c.name })
       const r = await runMultiTurnCase(c)
       results.push(r)
-      console.log(r.pass ? `PASS  (${r.ms}ms)` : `FAIL  (${r.ms}ms)`)
-      if (!r.pass) r.failures.forEach(f => console.log(`    - ${f}`))
+      logger.info('eval_case_result', { name: r.name, pass: r.pass, durationMs: r.ms })
+      if (!r.pass) r.failures.forEach(f => logger.warn('eval_case_failure', { name: r.name, failure: f }))
     }
   }
 
   const passed = results.filter(r => r.pass).length
-  console.log(`\n${passed}/${results.length} passed`)
+  logger.info('eval_complete', { passed, total: results.length })
 
   if (passed < results.length) process.exit(1)
 }
 
-main().catch(err => { console.error(err); process.exit(1) })
+main().catch(err => { logger.error('eval_failed', { message: err instanceof Error ? err.message : String(err) }); process.exit(1) })
+
+

@@ -9,12 +9,20 @@ const OPTIONAL_WITH_DEFAULTS: Record<string, string> = {
   PORT:                  '3001',
   USER_RATE_LIMIT_COUNT: '10',
   USER_RATE_LIMIT_MS:    '60000',
+  INGEST_RATE_LIMIT_COUNT: '5',
   DAILY_TOKEN_LIMIT:     '100000',
   JWT_ACCESS_EXPIRES:    '15m',
   JWT_REFRESH_EXPIRES:   '7d',
 }
 
 export function validateEnv(): void {
+  if (process.env.NODE_ENV === 'production' && !process.env.ALLOWED_ORIGIN) {
+    process.stderr.write(
+      '[STARTUP ERROR] ALLOWED_ORIGIN is required when NODE_ENV=production.\n'
+    )
+    process.exit(1)
+  }
+
   const missing = REQUIRED.filter(key => !process.env[key])
 
   if (missing.length > 0) {
