@@ -18,6 +18,7 @@ import { isLockedOut, recordFailedAttempt, clearAttempts } from "../services/log
 import { logger } from "../lib/logger";
 
 const router = Router();
+const normalizeUrl = (value: string) => value.replace(/\/$/, "");
 
 const BCRYPT_ROUNDS = 12;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -186,7 +187,7 @@ router.post("/forgot-password", async (req, res) => {
 
   await PasswordResetToken.create({ tokenHash, userId: user._id, expiresAt });
 
-  const clientUrl  = process.env.CLIENT_URL ?? "http://localhost:5173";
+  const clientUrl  = normalizeUrl(process.env.CLIENT_URL ?? "http://localhost:5173");
   const resetLink  = `${clientUrl}/reset-password?token=${rawToken}`;
 
   try {

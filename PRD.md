@@ -1,12 +1,6 @@
 # Product Requirements Document
 ## Excaliber — AI-Powered Diagram Generation Engine
 
-**Version:** 1.0  
-**Author:** Shrinidhi  
-**Date:** June 2026  
-**Status:** Completed (Internship Build)
-
----
 
 ## 1. Executive Summary
 

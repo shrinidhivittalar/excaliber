@@ -31,7 +31,8 @@ import critiqueRoutes from "./routes/critique";
 const app = express();
 app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3001;
-const allowedOrigin = process.env.ALLOWED_ORIGIN ?? 'http://localhost:5173';
+const normalizeUrl = (value: string) => value.replace(/\/$/, "");
+const allowedOrigin = normalizeUrl(process.env.ALLOWED_ORIGIN ?? 'http://localhost:5173');
 
 if (process.env.NODE_ENV === 'production' && !process.env.ALLOWED_ORIGIN) {
   process.stderr.write(
