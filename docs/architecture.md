@@ -182,7 +182,7 @@ API call made
 | Language | TypeScript 5.x |
 | ODM | Mongoose 8 |
 | Database | MongoDB 7 (Atlas) |
-| AI | Groq SDK (llama-3.3-70b-versatile, llama-4-scout-17b) |
+| AI | Groq SDK (llama-4-maverick-17b-128e-instruct, llama-4-scout-17b) |
 | Validation | Zod 3 |
 | Auth | jsonwebtoken + bcrypt |
 | Security | helmet, express-mongo-sanitize, express-rate-limit |

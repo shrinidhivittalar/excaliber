@@ -47,7 +47,7 @@ export interface ProcessMessageResult {
 }
 
 const MAX_FUNCTION_ITERATIONS = 10;
-const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+const DEFAULT_MODEL = "meta-llama/llama-4-maverick-17b-128e-instruct";
 
 type AiErrorCode = 'RATE_LIMIT' | 'TOOL_USE_FAILED' | 'INTERNAL'
 

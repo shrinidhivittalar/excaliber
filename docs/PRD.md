@@ -228,7 +228,7 @@ The following were deliberately excluded from this build:
 |----------|-----------|
 | AI plans; server positions | Prevents the LLM from hallucinating invalid pixel coordinates. The layout engine is deterministic and independently testable |
 | 7 dedicated layout algorithms | One generic algorithm produces mediocre layouts for all diagram types. Purpose-built algorithms produce optimal results per class |
-| Groq over OpenAI | Faster inference at comparable quality for structured tool-calling. Free tier; `llama-3.3-70b-versatile` handles the `plan_diagram` schema reliably |
+| Groq over OpenAI | Faster inference at comparable quality for structured tool-calling. Free tier; `llama-4-maverick-17b-128e-instruct` handles the `plan_diagram` schema reliably |
 | Canvas summarisation | Injecting a text summary of the current canvas (not raw JSON) keeps the AI context window small while preserving merge-mode awareness |
 | Client-owned semantic state | Conversation semantic state (entities, layout conventions, open threads) is round-tripped on every request, persisted in MongoDB, and restored on load — no server-side session memory required |
 | httpOnly refresh cookies | Prevents XSS-based token theft. Access tokens are short-lived; refresh tokens rotate on every use |

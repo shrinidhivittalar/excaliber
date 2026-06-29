@@ -68,7 +68,7 @@ Phase 10:   Security Hardening
 
 #### Backend
 - [x] `POST /api/chat` — accepts message and history, returns AI reply + sceneJson
-- [x] Groq SDK integrated (`llama-3.3-70b-versatile`)
+- [x] Groq SDK integrated (`llama-4-maverick-17b-128e-instruct`)
 - [x] `plan_diagram` tool schema defined and registered
 - [x] `runToolLoop()` — drives the LLM until tool calls are exhausted or reply returned
 - [x] `planToExcalidrawElements()` — first version (flat positioning, no layout algorithm)

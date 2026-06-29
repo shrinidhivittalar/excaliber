@@ -124,7 +124,7 @@ A dedicated critique route provides AI feedback on the current canvas — identi
 | Canvas | Excalidraw (via MCP server) |
 | Backend | Express.js + TypeScript |
 | Database | MongoDB + Mongoose |
-| AI Model | Groq API — `llama-3.3-70b-versatile` |
+| AI Model | Groq API — `llama-4-maverick-17b-128e-instruct` |
 | Image Search | Pexels API |
 | Auth | JWT + bcrypt + HTTP-only refresh cookies |
 
@@ -238,7 +238,102 @@ DiagramPlan (from AI)
 
 ---
 
-## 8. Out of Scope
+## 8. Non-Functional Requirements
+
+### 8.1 Performance
+| Metric | Target |
+|--------|--------|
+| AI diagram generation (P95) | < 8 seconds end-to-end |
+| Canvas render after layout | < 300 ms |
+| Document ingest processing | < 5 seconds for 10,000 characters |
+| Dashboard load (drawing list) | < 1.5 seconds |
+| Auth endpoints (login/register) | < 500 ms |
+
+### 8.2 Reliability & Availability
+- **Groq API failures:** Exponential backoff with 3 retries on 429/503/timeout. On final failure, return a user-visible error message; do not silently drop the request.
+- **Pexels API failures:** If image fetch fails, the diagram proceeds without the image node — generation is not blocked.
+- **MCP canvas bridge failure:** If the Excalidraw MCP call fails, the server logs the error and returns the raw element JSON to the client for local application.
+- **Database write failure on save:** Return a 500 with a clear message; do not silently lose data.
+- **Rate limit hit (10 req/min/IP):** Return HTTP 429 with a `Retry-After` header and a human-readable message.
+
+### 8.3 Security
+| Requirement | Implementation |
+|-------------|---------------|
+| Authentication on all data routes | JWT middleware — 401 on missing/expired token |
+| Token storage | Access token: memory only; refresh token: HTTP-only cookie |
+| Refresh token rotation | Each refresh issues a new token; old token is invalidated |
+| Input sanitisation | All `req.body` and `req.params` values sanitised before DB writes or AI injection |
+| Rate limiting | 10 chat requests / minute / IP to prevent AI cost abuse |
+| Password storage | bcrypt with cost factor 12 |
+| Share links | Read-only; no auth required; drawing owner can revoke |
+
+### 8.4 Storage & Data Limits
+| Entity | Limit |
+|--------|-------|
+| Drawings per user | Unlimited |
+| Tags per drawing | 10 |
+| Versions per drawing | Unlimited (snapshot per save) |
+| Document ingest input | 10,000 characters max |
+| Thumbnail size | JPEG, max 50 KB |
+| Conversation history per drawing | Trimmed to last 20 turns before AI injection |
+
+### 8.5 AI Model Constraints
+- Model: `llama-4-maverick-17b-128e-instruct` via Groq
+- Token budget tracked per user per session; warnings surfaced in logs
+- System prompt is the single source of truth for tool schema — model is never given coordinates directly
+- If the model returns a malformed `plan_diagram` call, the layout engine validation layer repairs or rejects it before rendering
+
+---
+
+## 9. Error Handling & Edge Cases
+
+### 9.1 Input Edge Cases
+
+| Scenario | Behaviour |
+|----------|-----------|
+| Empty prompt submitted | Frontend blocks submission; button disabled until ≥ 3 characters |
+| Prompt exceeds context window | Server truncates conversation history to last 20 turns, preserving the system prompt |
+| Unsupported file type dropped on CommandBar | Toast error: "Unsupported file type. Try .ts, .js, .py, .go, .md, .json, .yaml." |
+| File larger than 10,000 characters | Server truncates to 10,000 chars and continues; user sees a warning in the chat response |
+| Non-text file (image, binary) pasted | Detected by MIME type check; rejected with message before AI call |
+| Prompt in a non-English language | Passed to AI as-is; Groq handles multilingual input; diagram labels may be in that language |
+
+### 9.2 AI & Generation Edge Cases
+
+| Scenario | Behaviour |
+|----------|-----------|
+| AI returns no tool call | Server responds with the AI's raw text as a chat message; canvas is unchanged |
+| AI returns invalid node schema | Layout engine validator fills in defaults (missing `label` → `"Node"`, missing `type` → `"rectangle"`) |
+| Layout engine produces overlapping nodes | Auto-correct pass runs a second AI call to detect and reposition affected nodes |
+| Zero nodes returned | Canvas is unchanged; user sees: "I couldn't generate a diagram for that. Try rephrasing." |
+| Circular dependency in hierarchy layout | Detected at validation; layout falls back to `freeform` and logs a warning |
+| Image fetch returns no results (Pexels) | Diagram proceeds without image node; user sees a note in the chat response |
+| Groq rate limit (429) | Retry with exponential backoff (1s, 2s, 4s); if all retries fail, return HTTP 503 with message |
+
+### 9.3 Authentication Edge Cases
+
+| Scenario | Behaviour |
+|----------|-----------|
+| Expired access token on request | Server returns 401; client auto-calls `/api/auth/refresh` using the HTTP-only cookie |
+| Refresh token expired or revoked | Client receives 401 on refresh; redirected to login page; local state cleared |
+| Duplicate email on registration | Returns 409 Conflict with message "Email already in use" |
+| Wrong password on login | Returns 401 with message "Invalid credentials" (no indication of which field is wrong) |
+| Concurrent refresh calls (race condition) | First refresh wins; second receives 401 (token already rotated); client retries from login |
+
+### 9.4 Drawing Management Edge Cases
+
+| Scenario | Behaviour |
+|----------|-----------|
+| Save with no title | Defaults to `"Untitled Drawing"` |
+| Restore a version over an unsaved canvas | Confirmation modal: "Restore this version? Unsaved changes will be lost." |
+| Delete a folder containing drawings | Drawings are unfoldered (orphaned), not deleted |
+| Share link accessed by logged-in user | Renders read-only view regardless of ownership |
+| Share link accessed with drawing deleted | Returns 404 with message "This drawing is no longer available" |
+| Thumbnail generation failure | Drawing saves successfully; thumbnail field is null; dashboard shows placeholder |
+
+---
+
+## 10. Out of Scope
 
 The following were deliberately excluded from this build:
 
@@ -251,20 +346,20 @@ The following were deliberately excluded from this build:
 
 ---
 
-## 9. Key Engineering Decisions
+## 11. Key Engineering Decisions
 
 | Decision | Rationale |
 |----------|-----------|
 | AI plans, server positions | Prevents the LLM from hallucinating invalid pixel coordinates. The layout engine is deterministic and testable. |
 | 7 distinct layout algorithms | One generic algorithm produces mediocre layouts for all types. Dedicated algorithms produce optimal results per diagram class. |
 | MCP as canvas bridge | Decouples the AI service from Excalidraw internals. The MCP server owns the canvas protocol; the AI service owns logic. |
-| Groq over OpenAI | Significantly faster inference at comparable quality for structured tool-calling tasks. `llama-3.3-70b-versatile` handles the `plan_diagram` schema reliably. |
+| Groq over OpenAI | Significantly faster inference at comparable quality for structured tool-calling tasks. `llama-4-maverick-17b-128e-instruct` handles the `plan_diagram` schema reliably. |
 | Canvas summarisation | Injecting a text summary of the current canvas (not the raw JSON) into each prompt keeps the AI context window small while preserving contextual awareness for merge operations. |
 | HTTP-only refresh cookies | Prevents XSS-based token theft. Access tokens are short-lived; refresh tokens rotate on use. |
 
 ---
 
-## 10. Future Work
+## 12. Future Work
 
 | Feature | Description |
 |---------|-------------|
